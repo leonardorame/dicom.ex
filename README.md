@@ -17,7 +17,7 @@ in production and absolutely not in clinical contexts.
 
 ### Create and access DICOM data set
 
-```
+```elixir
 ds =
   DataSet.from_keyword_list(
     SOPInstanceUID: "1.2.3",
@@ -31,6 +31,6 @@ assert DataSet.value_for!(ds, :ImageType, 2) == "Test3"
 
 ### Read DICOM data set from file
 
-```
+```elixir
 ds = Dicom.BinaryFormat.from_file!("test/test_files/test-ExplicitVRLittleEndian.dcm")
 ```
