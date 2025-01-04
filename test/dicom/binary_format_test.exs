@@ -6,7 +6,8 @@ defmodule Dicom.BinaryFormatTest do
   test "parses integer fields" do
     data = :binary.decode_hex("02000000554C0400BE000000")
 
-    {de, <<>>} = BinaryFormat.read_next_data_element(data, endianness: :little, explicit: true)
+    {:ok, {de, <<>>}} =
+      BinaryFormat.read_next_data_element(data, endianness: :little, explicit: true)
 
     assert de == %Dicom.DataElement{
              group_number: 0x0002,
@@ -20,7 +21,8 @@ defmodule Dicom.BinaryFormatTest do
     data1 =
       :binary.decode_hex("0800160055491A00312E322E3834302E31303030382E352E312E342E312E312E3200")
 
-    {de, <<>>} = BinaryFormat.read_next_data_element(data1, endianness: :little, explicit: true)
+    {:ok, {de, <<>>}} =
+      BinaryFormat.read_next_data_element(data1, endianness: :little, explicit: true)
 
     assert de == %Dicom.DataElement{
              group_number: 0x0008,
@@ -38,7 +40,9 @@ defmodule Dicom.BinaryFormatTest do
           "2524F4B4552080004014C4F1200434154205343414E20434152444941515500"
       )
 
-    {de, <<>>} = BinaryFormat.read_next_data_element(data, endianness: :little, explicit: true)
+    {:ok, {de, <<>>}} =
+      BinaryFormat.read_next_data_element(data, endianness: :little, explicit: true)
+
     assert length(de.values) == 1
     assert map_size(List.first(de.values)) == 3
 
@@ -50,7 +54,9 @@ defmodule Dicom.BinaryFormatTest do
           "333030303030303430393330313333303338363837303030303135373400FEFF0DE000000000FEFFDDE000000000"
       )
 
-    {de, <<>>} = BinaryFormat.read_next_data_element(data, endianness: :little, explicit: true)
+    {:ok, {de, <<>>}} =
+      BinaryFormat.read_next_data_element(data, endianness: :little, explicit: true)
+
     assert length(de.values) == 1
     assert map_size(List.first(de.values)) == 2
 
@@ -63,7 +69,9 @@ defmodule Dicom.BinaryFormatTest do
           "30303033323034393436"
       )
 
-    {de, <<>>} = BinaryFormat.read_next_data_element(data, endianness: :little, explicit: true)
+    {:ok, {de, <<>>}} =
+      BinaryFormat.read_next_data_element(data, endianness: :little, explicit: true)
+
     assert length(de.values) == 1
 
     nested_sequence =
@@ -87,16 +95,56 @@ defmodule Dicom.BinaryFormatTest do
           "2C60464408001AD07C50C579983F18002E60464408001AD07C50C579983F"
       )
 
-    {de, <<>>} = BinaryFormat.read_next_data_element(data, endianness: :little, explicit: true)
+    {:ok, {de, <<>>}} =
+      BinaryFormat.read_next_data_element(data, endianness: :little, explicit: true)
 
     assert length(de.values) == 2
     assert map_size(List.first(de.values)) == 11
     assert map_size(Enum.at(de.values, 1)) == 11
   end
 
-  test "read file" do
-    path = "#{__DIR__}/../test_files/test-ImplicitVRLittleEndian.dcm"
-    ds = BinaryFormat.from_file(path)
-    IO.inspect(ds)
+  defp is_dicom_file(path) do
+    case File.open(path) do
+      {:ok, file} ->
+        header = IO.binread(file, 132) |> String.slice(128, 132)
+        File.close(file)
+        header == "DICM"
+
+      _ ->
+        false
+    end
+  end
+
+  test "read files" do
+    test_files =
+      Path.wildcard("#{__DIR__}/../test_files/**/*")
+      |> Enum.filter(&is_dicom_file/1)
+
+    failing_files =
+      test_files
+      |> Enum.filter(fn path ->
+        case BinaryFormat.from_file(path) do
+          {:ok, _ds} -> false
+          {:error, _err} -> true
+        end
+      end)
+      |> Enum.map(&Path.basename/1)
+      |> Enum.into(MapSet.new())
+
+    # TODO what is the problem with the private SQs?
+    # invalid files or missing metadata is not supported right now
+    expected_failing =
+      MapSet.new([
+        "MR_truncated.dcm",
+        "emri_small_jpeg_2k_lossless_too_short.dcm",
+        "image_dfl.dcm",
+        "meta_missing_tsyntax.dcm",
+        "nested_priv_SQ.dcm",
+        "no_meta_group_length.dcm",
+        "priv_SQ.dcm",
+        "rtplan_truncated.dcm"
+      ])
+
+    assert failing_files == expected_failing
   end
 end

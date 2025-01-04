@@ -5,8 +5,11 @@ defmodule Dicom.DataElement do
   References:
     * https://dicom.nema.org/dicom/2013/output/chtml/part05/chapter_7.html
   """
+
   alias Dicom.DataElement
   defstruct [:group_number, :element_number, :vr, :values]
+
+  @type t :: %__MODULE__{}
 
   def from(group_number, element_number, value_representation, values) do
     %DataElement{
@@ -42,21 +45,23 @@ defmodule Dicom.DataElement do
     tag(group_number, element_number)
   end
 
-  def display_string(%DataElement{
-        group_number: group_number,
-        element_number: element_number,
-        vr: vr,
-        values: _values
-      }) do
-    group = Integer.to_string(group_number, 16)
-    element = Integer.to_string(element_number, 16)
+  defimpl String.Chars, for: DataElement do
+    def to_string(%DataElement{
+          group_number: group_number,
+          element_number: element_number,
+          vr: vr,
+          values: values
+        }) do
+      group = Integer.to_string(group_number, 16)
+      element = Integer.to_string(element_number, 16)
 
-    name =
-      case Dicom.TagDict.get_by_tag_parts(group_number, element_number, :name) do
-        {:ok, name} -> name
-        :error -> nil
-      end
+      name =
+        case Dicom.TagDict.get_by_tag_parts(group_number, element_number, :name) do
+          {:ok, name} -> name
+          :error -> nil
+        end
 
-    "(#{group}, #{element}) #{vr} (#{name})"
+      "(#{group}, #{element}) #{vr} (#{name}): #{values}"
+    end
   end
 end

@@ -55,6 +55,10 @@ defmodule Dicom.UidRegistry do
     "1.2.840.10008.1.2.4.93" => %{
       name: :jpeg2000_part2_lossless_or_lossy,
       options: [endianness: :little, explicit: true]
+    },
+    "1.2.840.10008.1.2.5" => %{
+      name: :rle_lossless,
+      options: [endianness: :little, explicit: true]
     }
   }
 

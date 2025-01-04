@@ -198,12 +198,12 @@ defmodule Dicom.BinaryFormat do
 
   defp parse_value(:DA, data, endianness, explicit) do
     parse_value(:LO, data, endianness, explicit)
-    |> Enum.map(&parse_date/1)
+    # |> Enum.map(&parse_date/1)
   end
 
   defp parse_value(:TM, data, endianness, explicit) do
     parse_value(:LO, data, endianness, explicit)
-    |> Enum.map(&parse_time/1)
+    # |> Enum.map(&parse_time/1)
   end
 
   defp parse_value(:PN, data, endianness, explicit) do
@@ -253,7 +253,21 @@ defmodule Dicom.BinaryFormat do
     end
   end
 
-  def read_next_data_element(<<>>, _opts), do: nil
+  defp is_sequence_control_element(group_number, element_number)
+       when is_integer(group_number) and is_integer(element_number) do
+    case {group_number, element_number} do
+      {0xFFFE, 0xE000} -> {true, :sequence_item}
+      {0xFFFE, 0xE00D} -> {true, :sequence_item_delimination}
+      {0xFFFE, 0xE0DD} -> {true, :sequence_delimination}
+      _ -> false
+    end
+  end
+
+  @spec read_next_data_element(
+          data :: binary(),
+          opts :: [endianness: :little | :big, explicit: boolean()]
+        ) :: {:ok, {Dicom.DataElement.t(), binary()}} | {:error, atom()}
+  def read_next_data_element(<<>>, _opts), do: {:error, :no_data}
 
   def read_next_data_element(data, endianness: endianness, explicit: explicit) do
     <<group_number::binary-size(2), element_number::binary-size(2), rest::binary>> = data
@@ -261,38 +275,19 @@ defmodule Dicom.BinaryFormat do
     group_number = :binary.decode_unsigned(group_number, endianness)
     element_number = :binary.decode_unsigned(element_number, endianness)
 
-    case {group_number, element_number} do
-      {0xFFFE, 0xE000} ->
+    case is_sequence_control_element(group_number, element_number) do
+      {true, item_type} ->
         <<data_length::binary-size(4), rest::binary>> = rest
 
-        {DataElement.from(
-           group_number,
-           element_number,
-           :sequence_item,
-           data_length
-         ), rest}
+        {:ok,
+         {DataElement.from(
+            group_number,
+            element_number,
+            item_type,
+            data_length
+          ), rest}}
 
-      {0xFFFE, 0xE00D} ->
-        <<data_length::binary-size(4), rest::binary>> = rest
-
-        {DataElement.from(
-           group_number,
-           element_number,
-           :sequence_item_delimination,
-           data_length
-         ), rest}
-
-      {0xFFFE, 0xE0DD} ->
-        <<data_length::binary-size(4), rest::binary>> = rest
-
-        {DataElement.from(
-           group_number,
-           element_number,
-           :sequence_delimination,
-           data_length
-         ), rest}
-
-      _ ->
+      false ->
         {value_rep, rest} =
           if explicit do
             <<value_rep::binary-size(2), rest::binary>> = rest
@@ -374,13 +369,13 @@ defmodule Dicom.BinaryFormat do
             {data_element, rest}
           end
 
-        {data_element, rest}
+        {:ok, {data_element, rest}}
     end
   end
 
   def from_binary_until(data, until_tag, opts) do
     case read_next_data_element(data, opts) do
-      {de, rest} ->
+      {:ok, {de, rest}} ->
         cond do
           DataElement.tag(de) < until_tag ->
             {other_des, rest} = from_binary_until(rest, until_tag, opts)
@@ -393,7 +388,7 @@ defmodule Dicom.BinaryFormat do
             {[], data}
         end
 
-      nil ->
+      {:error, :no_data} ->
         {[], data}
     end
   end
@@ -402,33 +397,48 @@ defmodule Dicom.BinaryFormat do
       when is_binary(data) do
     ds =
       Stream.unfold(data, fn ac ->
-        read_next_data_element(ac, opts)
+        case read_next_data_element(ac, opts) do
+          {:ok, {de, rest}} -> {de, rest}
+          {:error, :no_data} -> nil
+        end
       end)
       |> Dicom.DataSet.from_elements()
 
     ds
   end
 
-  def from_file(path) do
+  # TODO add better error handling to parsing
+
+  @spec from_file!(Path.t()) :: DataSet.t()
+  def from_file!(path) do
     {:ok, data} = File.read(path)
     <<_preamble::binary-size(128), "DICM", data::binary>> = data
 
     file_meta_opts = [endianness: :little, explicit: true]
-    {file_meta_length_de, rest} = read_next_data_element(data, file_meta_opts)
+    {:ok, {file_meta_length_de, rest}} = read_next_data_element(data, file_meta_opts)
     file_meta_length = DataElement.value(file_meta_length_de)
     <<file_meta_data::binary-size(file_meta_length), rest::binary>> = rest
     file_meta_ds = from_binary(file_meta_data, file_meta_opts)
 
     file_ts =
       file_meta_ds
-      |> Dicom.DataSet.fetch!(:TransferSyntaxUID)
-      |> Dicom.DataElement.value()
+      |> Dicom.DataSet.value_for!(:TransferSyntaxUID)
       |> Dicom.UidRegistry.get_transfer_syntax()
 
     ts_options = Map.fetch!(file_ts, :options)
 
     ds = from_binary(rest, ts_options)
     ds
+  end
+
+  @spec from_file(Path.t()) :: {:ok, DataSet.t()} | {:error, atom()}
+  def from_file(path) do
+    try do
+      ds = from_file!(path)
+      {:ok, ds}
+    rescue
+      _ -> {:error, :invalid_file}
+    end
   end
 
   def serialize_u16(num, :little), do: <<num::unsigned-integer-little-16>>

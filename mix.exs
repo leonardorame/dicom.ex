@@ -3,7 +3,7 @@ defmodule Dicom.MixProject do
 
   def project do
     [
-      app: :dicom,
+      app: :dicomex,
       version: "0.1.0",
       elixir: "~> 1.18",
       start_permanent: Mix.env() == :prod,
