@@ -83,7 +83,7 @@ defmodule DicomNet.Association do
            type: :associate_request,
            data: associate_request
          },
-         %{socket: socket, state: :waiting_for_association} = state
+         %{socket: _socket, state: :waiting_for_association} = state
        ) do
     Logger.info("Accepting association")
     association_data = accept_associate_request(associate_request)

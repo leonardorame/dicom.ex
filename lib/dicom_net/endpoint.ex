@@ -10,8 +10,6 @@ defmodule DicomNet.Endpoint do
   See also:
     * https://dicom.nema.org/dicom/2013/output/chtml/part08/chapter_9.html
   """
-  alias Dicom.DataElement
-  alias Dicom.DataSet
   use GenServer
   require Logger
 
@@ -56,20 +54,8 @@ defmodule DicomNet.Endpoint do
 
   @impl true
   def handle_info({:dicom, dicom_op}, %{listeners: listeners} = state) do
-    # IO.inspect({:dicom_op, dicom_op})
-    ds = Map.fetch!(dicom_op, :dataset)
-    uid = DataSet.fetch!(ds, :SOPInstanceUID)
-
-    ds_repr =
-      ds
-      |> Map.values()
-      |> Enum.map(&DataElement.display_string/1)
-      |> Enum.join("\n")
-
-    IO.puts(ds_repr)
-
     for listener <- listeners do
-      GenServer.cast(listener, {:dicom, dicom_op})
+      send(listener, {:dicom, dicom_op})
     end
 
     {:noreply, state}

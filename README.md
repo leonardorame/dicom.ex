@@ -34,3 +34,17 @@ assert DataSet.value_for!(ds, :ImageType, 2) == "Test3"
 ```elixir
 ds = Dicom.BinaryFormat.from_file!("test/test_files/test-ExplicitVRLittleEndian.dcm")
 ```
+
+### Receive C-STORE requests via network
+
+```elixir
+{:ok, endpoint_pid} = GenServer.start_link(DicomNet.Endpoint, port: 4242)
+DicomNet.Endpoint.register_listener(endpoint_pid, self())
+
+# send data set, e.g. with DCMTK: storescu localhost 4242 dataset.dcm
+
+receive do
+  {:dicom, %{operation: :cstore, dataset: ds}} ->
+    # do something with the data set
+end
+```
