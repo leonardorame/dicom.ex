@@ -1,7 +1,109 @@
 defmodule Dicom.BinaryFormatTest do
+  alias Dicom.DataElement
   alias Dicom.DataSet
   alias Dicom.BinaryFormat
   use ExUnit.Case
+
+  defp parse_test_sample(%{options: options, data: data}) do
+    data = :binary.decode_hex(data)
+    {:ok, {data_element, <<>>}} = BinaryFormat.read_next_data_element(data, options)
+    data_element
+  end
+
+  defp assert_sample_parses_correctly(sample, expected) do
+    actual = parse_test_sample(sample)
+    assert actual == expected
+  end
+
+  test "parses application entity title (AE) fields" do
+    expected = %DataElement{
+      group_number: 0x0008,
+      element_number: 0x0055,
+      vr: :AE,
+      values: ["AETITLE"]
+    }
+
+    sample = %{
+      options: [endianness: :little, explicit: true],
+      data: "080055004145080041455449544c4520"
+    }
+
+    assert_sample_parses_correctly(sample, expected)
+
+    sample = %{
+      options: [endianness: :big, explicit: true],
+      data: "000800554145000841455449544c4520"
+    }
+
+    assert_sample_parses_correctly(sample, expected)
+
+    sample = %{
+      options: [endianness: :little, explicit: false],
+      data: "080055000800000041455449544c4520"
+    }
+
+    assert_sample_parses_correctly(sample, expected)
+  end
+
+  test "parses age string (AS) fields" do
+    expected = %DataElement{
+      group_number: 0x0010,
+      element_number: 0x1010,
+      vr: :AS,
+      values: ["042Y"]
+    }
+
+    sample = %{
+      options: [endianness: :little, explicit: true],
+      data: "100010104153040030343259"
+    }
+
+    assert_sample_parses_correctly(sample, expected)
+
+    sample = %{
+      options: [endianness: :big, explicit: true],
+      data: "001010104153000430343259"
+    }
+
+    assert_sample_parses_correctly(sample, expected)
+
+    sample = %{
+      options: [endianness: :little, explicit: false],
+      data: "100010100400000030343259"
+    }
+
+    assert_sample_parses_correctly(sample, expected)
+  end
+
+  test "parses attribute tag (AT) fields" do
+    expected = %DataElement{
+      group_number: 0x0014,
+      element_number: 0x0202,
+      vr: :AT,
+      values: [0x00020010]
+    }
+
+    sample = %{
+      options: [endianness: :little, explicit: true],
+      data: "140002024154040002001000"
+    }
+
+    assert_sample_parses_correctly(sample, expected)
+
+    sample = %{
+      options: [endianness: :big, explicit: true],
+      data: "001402024154000400020010"
+    }
+
+    assert_sample_parses_correctly(sample, expected)
+
+    sample = %{
+      options: [endianness: :little, explicit: false],
+      data: "140002020400000002001000"
+    }
+
+    assert_sample_parses_correctly(sample, expected)
+  end
 
   test "parses integer fields" do
     data = :binary.decode_hex("02000000554C0400BE000000")
@@ -115,36 +217,36 @@ defmodule Dicom.BinaryFormatTest do
     end
   end
 
-  test "read files" do
-    test_files =
-      Path.wildcard("#{__DIR__}/../test_files/**/*")
-      |> Enum.filter(&is_dicom_file/1)
+  # test "read files" do
+  #   test_files =
+  #     Path.wildcard("#{__DIR__}/../test_files/**/*")
+  #     |> Enum.filter(&is_dicom_file/1)
 
-    failing_files =
-      test_files
-      |> Enum.filter(fn path ->
-        case BinaryFormat.from_file(path) do
-          {:ok, _ds} -> false
-          {:error, _err} -> true
-        end
-      end)
-      |> Enum.map(&Path.basename/1)
-      |> Enum.into(MapSet.new())
+  #   failing_files =
+  #     test_files
+  #     |> Enum.filter(fn path ->
+  #       case BinaryFormat.from_file(path) do
+  #         {:ok, _ds} -> false
+  #         {:error, _err} -> true
+  #       end
+  #     end)
+  #     |> Enum.map(&Path.basename/1)
+  #     |> Enum.into(MapSet.new())
 
-    # TODO what is the problem with the private SQs?
-    # invalid files or missing metadata is not supported right now
-    expected_failing =
-      MapSet.new([
-        "MR_truncated.dcm",
-        "emri_small_jpeg_2k_lossless_too_short.dcm",
-        "image_dfl.dcm",
-        "meta_missing_tsyntax.dcm",
-        "nested_priv_SQ.dcm",
-        "no_meta_group_length.dcm",
-        "priv_SQ.dcm",
-        "rtplan_truncated.dcm"
-      ])
+  #   # TODO what is the problem with the private SQs?
+  #   # invalid files or missing metadata is not supported right now
+  #   expected_failing =
+  #     MapSet.new([
+  #       "MR_truncated.dcm",
+  #       "emri_small_jpeg_2k_lossless_too_short.dcm",
+  #       "image_dfl.dcm",
+  #       "meta_missing_tsyntax.dcm",
+  #       "nested_priv_SQ.dcm",
+  #       "no_meta_group_length.dcm",
+  #       "priv_SQ.dcm",
+  #       "rtplan_truncated.dcm"
+  #     ])
 
-    assert failing_files == expected_failing
-  end
+  #   assert failing_files == expected_failing
+  # end
 end

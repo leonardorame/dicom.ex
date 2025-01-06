@@ -145,6 +145,18 @@ defmodule Dicom.BinaryFormat do
     Time.new!(hours, minutes, seconds, microseconds)
   end
 
+  defp parse_attribute_tag(data, endianness) do
+    <<group::binary-size(2), element::binary-size(2)>> = data
+    group = :binary.decode_unsigned(group, endianness)
+    element = :binary.decode_unsigned(element, endianness)
+    Bitwise.bsl(group, 16) + element
+  end
+
+  defp parse_value(:AT, data, endianness, _explicit) do
+    data
+    |> map_binary_extractor(4, &parse_attribute_tag(&1, endianness))
+  end
+
   defp parse_value(:FL, data, endianness, _explicit) do
     data
     |> map_binary_extractor(4, &parse_float_single(&1, endianness))
@@ -158,6 +170,7 @@ defmodule Dicom.BinaryFormat do
   defp parse_value(string_vr, data, _endianness, _explicit)
        when string_vr in [
               :AE,
+              :AS,
               :UI,
               :SH,
               :LO,
