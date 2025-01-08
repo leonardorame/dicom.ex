@@ -25,6 +25,6 @@ defmodule DicomNet.EndpointIntegrationTest do
       System.cmd("storescu", ["localhost", to_string(@port), file])
     end)
 
-    assert_received {:dicom, %{operation: :cstore, dataset: _ds}}
+    assert_receive {:dicom, %{operation: :cstore, dataset: _ds}}
   end
 end

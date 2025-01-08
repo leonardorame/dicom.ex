@@ -12,6 +12,18 @@ defmodule Dicom.BinaryFormatTest do
 
   defp assert_sample_parses_correctly(sample, expected) do
     actual = parse_test_sample(sample)
+
+    # round float values to a fixed precision
+    {actual, expected} =
+      if expected.vr in [:FL, :FD] do
+        {
+          %DataElement{actual | values: actual.values |> Enum.map(&Float.round(&1, 5))},
+          %DataElement{expected | values: expected.values |> Enum.map(&Float.round(&1, 5))}
+        }
+      else
+        {actual, expected}
+      end
+
     assert actual == expected
   end
 
@@ -100,6 +112,216 @@ defmodule Dicom.BinaryFormatTest do
     sample = %{
       options: [endianness: :little, explicit: false],
       data: "140002020400000002001000"
+    }
+
+    assert_sample_parses_correctly(sample, expected)
+  end
+
+  test "parses code string (CS) fields" do
+    expected = %DataElement{
+      group_number: 0x0008,
+      element_number: 0x0008,
+      vr: :CS,
+      values: ["CODESTRING"]
+    }
+
+    sample = %{
+      options: [endianness: :little, explicit: true],
+      data: "0800080043530a00434f4445535452494e47"
+    }
+
+    assert_sample_parses_correctly(sample, expected)
+
+    sample = %{
+      options: [endianness: :big, explicit: true],
+      data: "000800084353000a434f4445535452494e47"
+    }
+
+    assert_sample_parses_correctly(sample, expected)
+
+    sample = %{
+      options: [endianness: :little, explicit: false],
+      data: "080008000a000000434f4445535452494e47"
+    }
+
+    assert_sample_parses_correctly(sample, expected)
+  end
+
+  test "parses date (DA) fields" do
+    expected = %DataElement{
+      group_number: 0x0008,
+      element_number: 0x0012,
+      vr: :DA,
+      values: ["20000101"]
+    }
+
+    sample = %{
+      options: [endianness: :little, explicit: true],
+      data: "08001200444108003230303030313031"
+    }
+
+    assert_sample_parses_correctly(sample, expected)
+
+    sample = %{
+      options: [endianness: :big, explicit: true],
+      data: "00080012444100083230303030313031"
+    }
+
+    assert_sample_parses_correctly(sample, expected)
+
+    sample = %{
+      options: [endianness: :little, explicit: false],
+      data: "08001200080000003230303030313031"
+    }
+
+    assert_sample_parses_correctly(sample, expected)
+  end
+
+  test "parses decimal string (DS) field" do
+    expected = %DataElement{
+      group_number: 0x0010,
+      element_number: 0x1020,
+      vr: :DS,
+      values: ["1.93"]
+    }
+
+    sample = %{
+      options: [endianness: :little, explicit: true],
+      data: "1000201044530400312e3933"
+    }
+
+    assert_sample_parses_correctly(sample, expected)
+
+    sample = %{
+      options: [endianness: :big, explicit: true],
+      data: "0010102044530004312e3933"
+    }
+
+    assert_sample_parses_correctly(sample, expected)
+
+    sample = %{
+      options: [endianness: :little, explicit: false],
+      data: "1000201004000000312e3933"
+    }
+
+    assert_sample_parses_correctly(sample, expected)
+  end
+
+  test "parses date time (DT) fields" do
+    expected = %DataElement{
+      group_number: 0x0008,
+      element_number: 0x0015,
+      vr: :DT,
+      values: ["20240102131415"]
+    }
+
+    sample = %{
+      options: [endianness: :little, explicit: true],
+      data: "0800150044540e003230323430313032313331343135"
+    }
+
+    assert_sample_parses_correctly(sample, expected)
+
+    sample = %{
+      options: [endianness: :big, explicit: true],
+      data: "000800154454000e3230323430313032313331343135"
+    }
+
+    assert_sample_parses_correctly(sample, expected)
+
+    sample = %{
+      options: [endianness: :little, explicit: false],
+      data: "080015000e0000003230323430313032313331343135"
+    }
+
+    assert_sample_parses_correctly(sample, expected)
+  end
+
+  test "parses float (FT) fields" do
+    expected = %DataElement{
+      group_number: 0x0018,
+      element_number: 0x2046,
+      vr: :FL,
+      values: [1.234]
+    }
+
+    sample = %{
+      options: [endianness: :little, explicit: true],
+      data: "18004620464c0400b6f39d3f"
+    }
+
+    assert_sample_parses_correctly(sample, expected)
+
+    sample = %{
+      options: [endianness: :big, explicit: true],
+      data: "00182046464c00043f9df3b6"
+    }
+
+    assert_sample_parses_correctly(sample, expected)
+
+    sample = %{
+      options: [endianness: :little, explicit: false],
+      data: "1800462004000000b6f39d3f"
+    }
+
+    assert_sample_parses_correctly(sample, expected)
+  end
+
+  test "parses double (FD) fields" do
+    expected = %DataElement{
+      group_number: 0x0008,
+      element_number: 0x1163,
+      vr: :FD,
+      values: [1.23456789, 9.012345678]
+    }
+
+    sample = %{
+      options: [endianness: :little, explicit: true],
+      data: "08006311464410001bde8342cac0f33f8f83362c52062240"
+    }
+
+    assert_sample_parses_correctly(sample, expected)
+
+    sample = %{
+      options: [endianness: :big, explicit: true],
+      data: "00081163464400103ff3c0ca4283de1b402206522c36838f"
+    }
+
+    assert_sample_parses_correctly(sample, expected)
+
+    sample = %{
+      options: [endianness: :little, explicit: false],
+      data: "08006311100000001bde8342cac0f33f8f83362c52062240"
+    }
+
+    assert_sample_parses_correctly(sample, expected)
+  end
+
+  test "parses integer string (IS) fields" do
+    expected = %DataElement{
+      group_number: 0x0008,
+      element_number: 0x1160,
+      vr: :IS,
+      values: ["123"]
+    }
+
+    sample = %{
+      options: [endianness: :little, explicit: true],
+      data: "080060114953040031323320"
+    }
+
+    assert_sample_parses_correctly(sample, expected)
+
+    sample = %{
+      options: [endianness: :big, explicit: true],
+      data: "000811604953000431323320"
+    }
+
+    assert_sample_parses_correctly(sample, expected)
+
+    sample = %{
+      options: [endianness: :little, explicit: false],
+      data: "080060110400000031323320"
     }
 
     assert_sample_parses_correctly(sample, expected)

@@ -219,6 +219,10 @@ defmodule Dicom.BinaryFormat do
     # |> Enum.map(&parse_time/1)
   end
 
+  defp parse_value(:DT, data, endianness, explicit) do
+    parse_value(:LO, data, endianness, explicit)
+  end
+
   defp parse_value(:PN, data, endianness, explicit) do
     parse_value(:LO, data, endianness, explicit)
   end
