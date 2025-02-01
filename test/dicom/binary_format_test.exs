@@ -327,33 +327,576 @@ defmodule Dicom.BinaryFormatTest do
     assert_sample_parses_correctly(sample, expected)
   end
 
-  test "parses integer fields" do
-    data = :binary.decode_hex("02000000554C0400BE000000")
+  test "parses long string (LO) fields" do
+    expected = %DataElement{
+      group_number: 0x0008,
+      element_number: 0x0070,
+      vr: :LO,
+      values: ["LONGSTRING"]
+    }
 
-    {:ok, {de, <<>>}} =
-      BinaryFormat.read_next_data_element(data, endianness: :little, explicit: true)
+    sample = %{
+      options: [endianness: :little, explicit: true],
+      data: "080070004c4f0a004c4f4e47535452494e47"
+    }
 
-    assert de == %Dicom.DataElement{
-             group_number: 0x0002,
-             element_number: 0x0000,
-             vr: :UL,
-             values: [190]
-           }
+    assert_sample_parses_correctly(sample, expected)
+
+    sample = %{
+      options: [endianness: :big, explicit: true],
+      data: "000800704c4f000a4c4f4e47535452494e47"
+    }
+
+    assert_sample_parses_correctly(sample, expected)
+
+    sample = %{
+      options: [endianness: :little, explicit: false],
+      data: "080070000a0000004c4f4e47535452494e47"
+    }
+
+    assert_sample_parses_correctly(sample, expected)
   end
 
-  test "parses uid fields" do
-    data1 =
-      :binary.decode_hex("0800160055491A00312E322E3834302E31303030382E352E312E342E312E312E3200")
+  test "parses long text (LT) fields" do
+    expected = %DataElement{
+      group_number: 0x0008,
+      element_number: 0x0108,
+      vr: :LT,
+      values: ["LONGTEXT"]
+    }
 
-    {:ok, {de, <<>>}} =
-      BinaryFormat.read_next_data_element(data1, endianness: :little, explicit: true)
+    sample = %{
+      options: [endianness: :little, explicit: true],
+      data: "080008014c5408004c4f4e4754455854"
+    }
 
-    assert de == %Dicom.DataElement{
-             group_number: 0x0008,
-             element_number: 0x0016,
-             vr: :UI,
-             values: ["1.2.840.10008.5.1.4.1.1.2"]
-           }
+    assert_sample_parses_correctly(sample, expected)
+
+    sample = %{
+      options: [endianness: :big, explicit: true],
+      data: "000801084c5400084c4f4e4754455854"
+    }
+
+    assert_sample_parses_correctly(sample, expected)
+
+    sample = %{
+      options: [endianness: :little, explicit: false],
+      data: "08000801080000004c4f4e4754455854"
+    }
+
+    assert_sample_parses_correctly(sample, expected)
+  end
+
+  test "parses other binary (OB) fields" do
+    expected = %DataElement{
+      group_number: 0x0014,
+      element_number: 0x2210,
+      vr: :OB,
+      values: [<<0x31, 0x32, 0x33, 0x34>>]
+    }
+
+    sample = %{
+      options: [endianness: :little, explicit: true],
+      data: "140010224f4200000400000031323334"
+    }
+
+    assert_sample_parses_correctly(sample, expected)
+
+    sample = %{
+      options: [endianness: :big, explicit: true],
+      data: "001422104f4200000000000431323334"
+    }
+
+    assert_sample_parses_correctly(sample, expected)
+
+    sample = %{
+      options: [endianness: :little, explicit: false],
+      data: "140010220400000031323334"
+    }
+
+    assert_sample_parses_correctly(sample, expected)
+  end
+
+  test "parses other word (OW) fields" do
+    expected = %DataElement{
+      group_number: 0x0028,
+      element_number: 0x1408,
+      vr: :OW,
+      values: ["otherword\0"]
+    }
+
+    sample = %{
+      options: [endianness: :little, explicit: true],
+      data: "280008144f5700000a0000006f74686572776f726400"
+    }
+
+    assert_sample_parses_correctly(sample, expected)
+
+    sample = %{
+      options: [endianness: :big, explicit: true],
+      data: "002814084f5700000000000a6f74686572776f726400"
+    }
+
+    assert_sample_parses_correctly(sample, expected)
+
+    sample = %{
+      options: [endianness: :little, explicit: false],
+      data: "280008140a0000006f74686572776f726400"
+    }
+
+    assert_sample_parses_correctly(sample, expected)
+  end
+
+  test "parses patient name (PN) fields" do
+    expected = %DataElement{
+      group_number: 0x0010,
+      element_number: 0x0010,
+      vr: :PN,
+      values: ["Doe^John"]
+    }
+
+    sample = %{
+      options: [endianness: :little, explicit: true],
+      data: "10001000504e0800446f655e4a6f686e"
+    }
+
+    assert_sample_parses_correctly(sample, expected)
+
+    sample = %{
+      options: [endianness: :big, explicit: true],
+      data: "00100010504e0008446f655e4a6f686e"
+    }
+
+    assert_sample_parses_correctly(sample, expected)
+
+    sample = %{
+      options: [endianness: :little, explicit: false],
+      data: "1000100008000000446f655e4a6f686e"
+    }
+
+    assert_sample_parses_correctly(sample, expected)
+  end
+
+  test "parses short string (SH) fields" do
+    expected = %DataElement{
+      group_number: 0x0008,
+      element_number: 0x0050,
+      vr: :SH,
+      values: ["SHORTSTRING"]
+    }
+
+    sample = %{
+      options: [endianness: :little, explicit: true],
+      data: "0800500053480c0053484f5254535452494e4720"
+    }
+
+    assert_sample_parses_correctly(sample, expected)
+
+    sample = %{
+      options: [endianness: :big, explicit: true],
+      data: "000800505348000c53484f5254535452494e4720"
+    }
+
+    assert_sample_parses_correctly(sample, expected)
+
+    sample = %{
+      options: [endianness: :little, explicit: false],
+      data: "080050000c00000053484f5254535452494e4720"
+    }
+
+    assert_sample_parses_correctly(sample, expected)
+  end
+
+  test "parses signed long (SL) fields" do
+    expected = %DataElement{
+      group_number: 0x0072,
+      element_number: 0x007C,
+      vr: :SL,
+      values: [-42]
+    }
+
+    sample = %{
+      options: [endianness: :little, explicit: true],
+      data: "72007c00534c0400d6ffffff"
+    }
+
+    assert_sample_parses_correctly(sample, expected)
+
+    sample = %{
+      options: [endianness: :big, explicit: true],
+      data: "0072007c534c0004ffffffd6"
+    }
+
+    assert_sample_parses_correctly(sample, expected)
+
+    sample = %{
+      options: [endianness: :little, explicit: false],
+      data: "72007c0004000000d6ffffff"
+    }
+
+    assert_sample_parses_correctly(sample, expected)
+  end
+
+  test "parses signed short (SS) fields" do
+    expected = %DataElement{
+      group_number: 0x0072,
+      element_number: 0x007E,
+      vr: :SS,
+      values: [-42]
+    }
+
+    sample = %{
+      options: [endianness: :little, explicit: true],
+      data: "72007e0053530200d6ff"
+    }
+
+    assert_sample_parses_correctly(sample, expected)
+
+    sample = %{
+      options: [endianness: :big, explicit: true],
+      data: "0072007e53530002ffd6"
+    }
+
+    assert_sample_parses_correctly(sample, expected)
+
+    sample = %{
+      options: [endianness: :little, explicit: false],
+      data: "72007e0002000000d6ff"
+    }
+
+    assert_sample_parses_correctly(sample, expected)
+  end
+
+  test "parses short text (ST) fields" do
+    expected = %DataElement{
+      group_number: 0x0008,
+      element_number: 0x0081,
+      vr: :ST,
+      values: ["SHORTTEXT"]
+    }
+
+    sample = %{
+      options: [endianness: :little, explicit: true],
+      data: "0800810053540a0053484f52545445585420"
+    }
+
+    assert_sample_parses_correctly(sample, expected)
+
+    sample = %{
+      options: [endianness: :big, explicit: true],
+      data: "000800815354000a53484f52545445585420"
+    }
+
+    assert_sample_parses_correctly(sample, expected)
+
+    sample = %{
+      options: [endianness: :little, explicit: false],
+      data: "080081000a00000053484f52545445585420"
+    }
+
+    assert_sample_parses_correctly(sample, expected)
+  end
+
+  test "parses signed very long (SV) fields" do
+    expected = %DataElement{
+      group_number: 0x0072,
+      element_number: 0x0082,
+      vr: :SV,
+      values: [-9_223_372_036_854_775_808, 9_223_372_036_854_775_807]
+    }
+
+    sample = %{
+      options: [endianness: :little, explicit: true],
+      data: "7200820053560000100000000000000000000080ffffffffffffff7f"
+    }
+
+    assert_sample_parses_correctly(sample, expected)
+
+    sample = %{
+      options: [endianness: :big, explicit: true],
+      data: "00720082535600000000001080000000000000007fffffffffffffff"
+    }
+
+    assert_sample_parses_correctly(sample, expected)
+
+    sample = %{
+      options: [endianness: :little, explicit: false],
+      data: "72008200100000000000000000000080ffffffffffffff7f"
+    }
+
+    assert_sample_parses_correctly(sample, expected)
+  end
+
+  test "parses time (TM) fields" do
+    expected = %DataElement{
+      group_number: 0x0008,
+      element_number: 0x0013,
+      vr: :TM,
+      values: ["111213.123456"]
+    }
+
+    sample = %{
+      options: [endianness: :little, explicit: true],
+      data: "08001300544d0e003131313231332e31323334353620"
+    }
+
+    assert_sample_parses_correctly(sample, expected)
+
+    sample = %{
+      options: [endianness: :big, explicit: true],
+      data: "00080013544d000e3131313231332e31323334353620"
+    }
+
+    assert_sample_parses_correctly(sample, expected)
+
+    sample = %{
+      options: [endianness: :little, explicit: false],
+      data: "080013000e0000003131313231332e31323334353620"
+    }
+
+    assert_sample_parses_correctly(sample, expected)
+  end
+
+  test "parses unlimited characters (UC) fields" do
+    expected = %DataElement{
+      group_number: 0x0008,
+      element_number: 0x0119,
+      vr: :UC,
+      # TODO: this has an additional trailing space because lenght is uneven
+      # I'm not yet sure how this is properly handled
+      values: ["  padded characters   "]
+    }
+
+    sample = %{
+      options: [endianness: :little, explicit: true],
+      data: "08001901554300001600000020207061646465642063686172616374657273202020"
+    }
+
+    assert_sample_parses_correctly(sample, expected)
+
+    sample = %{
+      options: [endianness: :big, explicit: true],
+      data: "00080119554300000000001620207061646465642063686172616374657273202020"
+    }
+
+    assert_sample_parses_correctly(sample, expected)
+
+    sample = %{
+      options: [endianness: :little, explicit: false],
+      data: "080019011600000020207061646465642063686172616374657273202020"
+    }
+
+    assert_sample_parses_correctly(sample, expected)
+  end
+
+  test "parses unique identifier (UI) fields" do
+    expected = %DataElement{
+      group_number: 0x0004,
+      element_number: 0x1432,
+      vr: :UI,
+      values: ["1.2.3.4"]
+    }
+
+    sample = %{
+      options: [endianness: :little, explicit: true],
+      data: "0400321455490800312e322e332e3400"
+    }
+
+    assert_sample_parses_correctly(sample, expected)
+
+    sample = %{
+      options: [endianness: :big, explicit: true],
+      data: "0004143255490008312e322e332e3400"
+    }
+
+    assert_sample_parses_correctly(sample, expected)
+
+    sample = %{
+      options: [endianness: :little, explicit: false],
+      data: "0400321408000000312e322e332e3400"
+    }
+
+    assert_sample_parses_correctly(sample, expected)
+  end
+
+  test "parses unsigned long (UL) fields" do
+    expected = %DataElement{
+      group_number: 0x0018,
+      element_number: 0x6046,
+      vr: :UL,
+      values: [42]
+    }
+
+    sample = %{
+      options: [endianness: :little, explicit: true],
+      data: "18004660554c04002a000000"
+    }
+
+    assert_sample_parses_correctly(sample, expected)
+
+    sample = %{
+      options: [endianness: :big, explicit: true],
+      data: "00186046554c00040000002a"
+    }
+
+    assert_sample_parses_correctly(sample, expected)
+
+    sample = %{
+      options: [endianness: :little, explicit: false],
+      data: "18004660040000002a000000"
+    }
+
+    assert_sample_parses_correctly(sample, expected)
+  end
+
+  test "parses univeral resource identifier/locator (UR) fields" do
+    expected = %DataElement{
+      group_number: 0x0008,
+      element_number: 0x0120,
+      vr: :UR,
+      values: ["urn:some-urn"]
+    }
+
+    sample = %{
+      options: [endianness: :little, explicit: true],
+      data: "08002001555200000c00000075726e3a736f6d652d75726e"
+    }
+
+    assert_sample_parses_correctly(sample, expected)
+
+    sample = %{
+      options: [endianness: :big, explicit: true],
+      data: "00080120555200000000000c75726e3a736f6d652d75726e"
+    }
+
+    assert_sample_parses_correctly(sample, expected)
+
+    sample = %{
+      options: [endianness: :little, explicit: false],
+      data: "080020010c00000075726e3a736f6d652d75726e"
+    }
+
+    assert_sample_parses_correctly(sample, expected)
+  end
+
+  test "parses unknown VR (UN) fields" do
+    expected = %DataElement{
+      group_number: 0x0072,
+      element_number: 0x006D,
+      vr: :UN,
+      values: ["unknown"]
+    }
+
+    sample = %{
+      options: [endianness: :little, explicit: true],
+      data: "72006d00554e000007000000756e6b6e6f776e"
+    }
+
+    assert_sample_parses_correctly(sample, expected)
+
+    sample = %{
+      options: [endianness: :big, explicit: true],
+      data: "0072006d554e000000000007756e6b6e6f776e"
+    }
+
+    assert_sample_parses_correctly(sample, expected)
+
+    sample = %{
+      options: [endianness: :little, explicit: false],
+      data: "72006d0007000000756e6b6e6f776e"
+    }
+
+    assert_sample_parses_correctly(sample, expected)
+  end
+
+  test "parses unsigned short (US) fields" do
+    expected = %DataElement{
+      group_number: 0x0008,
+      element_number: 0x0040,
+      vr: :US,
+      values: [1]
+    }
+
+    sample = %{
+      options: [endianness: :little, explicit: true],
+      data: "08004000555302000100"
+    }
+
+    assert_sample_parses_correctly(sample, expected)
+
+    sample = %{
+      options: [endianness: :big, explicit: true],
+      data: "00080040555300020001"
+    }
+
+    assert_sample_parses_correctly(sample, expected)
+
+    sample = %{
+      options: [endianness: :little, explicit: false],
+      data: "08004000020000000100"
+    }
+
+    assert_sample_parses_correctly(sample, expected)
+  end
+
+  test "parses unlimited text (UT) fields" do
+    expected = %DataElement{
+      group_number: 0x0016,
+      element_number: 0x0003,
+      vr: :UT,
+      values: ["UNLIMITEDTEXT"]
+    }
+
+    sample = %{
+      options: [endianness: :little, explicit: true],
+      data: "16000300555400000e000000554e4c494d495445445445585420"
+    }
+
+    assert_sample_parses_correctly(sample, expected)
+
+    sample = %{
+      options: [endianness: :big, explicit: true],
+      data: "00160003555400000000000e554e4c494d495445445445585420"
+    }
+
+    assert_sample_parses_correctly(sample, expected)
+
+    sample = %{
+      options: [endianness: :little, explicit: false],
+      data: "160003000e000000554e4c494d495445445445585420"
+    }
+
+    assert_sample_parses_correctly(sample, expected)
+  end
+
+  test "parses unsigned very long (UV) fields" do
+    expected = %DataElement{
+      group_number: 0x0008,
+      element_number: 0x0428,
+      vr: :UV,
+      values: [42_424_242]
+    }
+
+    sample = %{
+      options: [endianness: :little, explicit: true],
+      data: "080028045556000008000000b257870200000000"
+    }
+
+    assert_sample_parses_correctly(sample, expected)
+
+    sample = %{
+      options: [endianness: :big, explicit: true],
+      data: "00080428555600000000000800000000028757b2"
+    }
+
+    assert_sample_parses_correctly(sample, expected)
+
+    sample = %{
+      options: [endianness: :little, explicit: false],
+      data: "0800280408000000b257870200000000"
+    }
+
+    assert_sample_parses_correctly(sample, expected)
   end
 
   test "parses sequence fields" do

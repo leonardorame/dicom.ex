@@ -24,20 +24,24 @@ ds.DisplayedZValue = 1.234
 ds.TimeRange = [1.23456789, 9.012345678]
 # IS
 ds.ReferencedFrameNumber = "123"
-# SH
-ds.DataSetSubtype = "SHORTSTRING"
+# LO
+ds.Manufacturer = "LONGSTRING"
 # LT
 ds.ExtendedCodeMeaning = "LONGTEXT"
 # OB
 ds.CoordinateSystemAxisValues = b"1234"
 # # OF
 # ds.VectorGridData = [1.23, 3.45, 6.78, 9.01, 2.34]
+# OL
+ds.LongPrimitivePointIndexList = b"\x01\x02\x03\x04"
+# OV
+ds.SelectorOVValue = b"\x01\x02\x03\x04\x05\x06\x07\x08"
 # # OD
 # ds.VolumetricCurvePoints = [1.23, 3.45, 6.78, 9.01, 2.34]
 # OW
 ds.BlendingLookupTableData = b"otherword"
 # PN
-ds.PatientName = "John^Doe"
+ds.PatientName = "Doe^John"
 # SH
 ds.AccessionNumber = "SHORTSTRING"
 # SL
@@ -46,18 +50,26 @@ ds.SelectorSLValue = -42
 ds.SelectorSSValue = -42
 # ST
 ds.InstitutionAddress = "SHORTTEXT"
+# SV
+ds.SelectorSVValue = [-9223372036854775808, 9223372036854775807]
 # TM
 ds.InstanceCreationTime = "111213.123456"
+# UC
+ds.LongCodeValue = "  padded characters  "
 # UI
 ds.PrivateRecordUID = "1.2.3.4"
 # UL
 ds.PixelComponentMask = 42
 # UN
 ds.SelectorUNValue = b"unknown"
+# UR
+ds.URNCodeValue = "urn:some-urn"
 # US
 ds.DataSetType = 1
 # UT
 ds.BatteryLevel = "UNLIMITEDTEXT"
+# UV
+ds.TotalNumberOfStudyRecords = 42424242
 
 
 def serialize_single_data_element(

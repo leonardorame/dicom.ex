@@ -6,6 +6,8 @@ defmodule Dicom.BinaryFormat do
   alias Dicom.DataSet
   alias Dicom.DataElement
 
+  # this is the list from DICOM 2024e
+  # https://dicom.nema.org/medical/dicom/current/output/html/part05.html#note_6.2-3-2
   defp vr_to_atom(vr)
        when vr in [
               # application entity
@@ -38,6 +40,10 @@ defmodule Dicom.BinaryFormat do
               "OD",
               # other float string
               "OF",
+              # other long
+              "OL",
+              # other very long OV
+              "OV",
               # other word string
               "OW",
               # person name
@@ -52,18 +58,26 @@ defmodule Dicom.BinaryFormat do
               "SS",
               # short text
               "ST",
+              # signed very long
+              "SV",
               # time
               "TM",
+              # unlimited characters
+              "UC",
               # unique identifier
               "UI",
               # unsigned long
               "UL",
               # unknown
               "UN",
+              # universal resource identifier or locator
+              "UR",
               # unsigned short
               "US",
               # unlimited text
-              "UT"
+              "UT",
+              # unsigned very long,
+              "UV"
             ] do
     String.to_atom(vr)
   end
@@ -74,12 +88,16 @@ defmodule Dicom.BinaryFormat do
       :OF,
       :OW,
       :SQ,
+      :SV,
+      :UC,
       :UT,
-      :UN
+      :UN,
+      :UR,
+      :UV
     ]
   end
 
-  defp parse_float_single(data, endianness) do
+  defp parse_float_32(data, endianness) do
     case endianness do
       :little ->
         <<num::float-32-little>> = data
@@ -91,7 +109,7 @@ defmodule Dicom.BinaryFormat do
     end
   end
 
-  defp parse_float_double(data, endianness) do
+  defp parse_float_64(data, endianness) do
     case endianness do
       :little ->
         <<num::float-64-little>> = data
@@ -103,46 +121,53 @@ defmodule Dicom.BinaryFormat do
     end
   end
 
+  defp parse_signed_16(data, endianness) do
+    case endianness do
+      :little ->
+        <<num::signed-integer-16-little>> = data
+        num
+
+      :big ->
+        <<num::signed-integer-16-big>> = data
+        num
+    end
+  end
+
+  defp parse_signed_32(data, endianness) do
+    case endianness do
+      :little ->
+        <<num::signed-integer-32-little>> = data
+        num
+
+      :big ->
+        <<num::signed-integer-32-big>> = data
+        num
+    end
+  end
+
+  defp parse_signed_64(data, endianness) do
+    case endianness do
+      :little ->
+        <<num::signed-integer-64-little>> = data
+        num
+
+      :big ->
+        <<num::signed-integer-64-big>> = data
+        num
+    end
+  end
+
+  defp parse_string_vr(data) do
+    data
+    |> String.trim_trailing(<<0>>)
+    |> String.split("\\")
+  end
+
   defp map_binary_extractor(data, byte_count, extractor) do
     data
     |> :binary.bin_to_list()
     |> Enum.chunk_every(byte_count)
     |> Enum.map(fn byte_list -> extractor.(:binary.list_to_bin(byte_list)) end)
-  end
-
-  defp parse_date(string) do
-    [_full | parts] = Regex.run(~r/(\d{4})(\d{2})(\d{2})/, string)
-
-    [year, month, day] =
-      parts
-      |> Enum.map(fn str ->
-        {num, ""} = Integer.parse(str)
-        num
-      end)
-
-    case Date.new(year, month, day) do
-      {:ok, date} -> date
-      {:error, _} -> nil
-    end
-  end
-
-  defp parse_time(string) do
-    [_full | parts] = Regex.run(~r/(\d{2})(\d{2})(\d{2})(?:\.(\d+))?/, string)
-
-    parts =
-      parts
-      |> Enum.map(fn str ->
-        {num, ""} = Integer.parse(str)
-        num
-      end)
-
-    [hours, minutes, seconds, microseconds] =
-      case parts do
-        [h, m, s] -> [h, m, s, 0]
-        [h, m, s, ms] -> [h, m, s, ms]
-      end
-
-    Time.new!(hours, minutes, seconds, microseconds)
   end
 
   defp parse_attribute_tag(data, endianness) do
@@ -159,12 +184,12 @@ defmodule Dicom.BinaryFormat do
 
   defp parse_value(:FL, data, endianness, _explicit) do
     data
-    |> map_binary_extractor(4, &parse_float_single(&1, endianness))
+    |> map_binary_extractor(4, &parse_float_32(&1, endianness))
   end
 
   defp parse_value(:FD, data, endianness, _explicit) do
     data
-    |> map_binary_extractor(8, &parse_float_double(&1, endianness))
+    |> map_binary_extractor(8, &parse_float_64(&1, endianness))
   end
 
   defp parse_value(string_vr, data, _endianness, _explicit)
@@ -177,13 +202,19 @@ defmodule Dicom.BinaryFormat do
               :DS,
               :IS,
               :CS,
-              :LT
+              :LT,
+              :ST,
+              :UR,
+              :UT
             ] do
     data
-    |> String.trim_trailing(<<0>>)
-    |> String.trim_trailing(" ")
-    |> String.split("\\")
-    |> Enum.filter(fn str -> String.length(str) > 0 end)
+    |> parse_string_vr()
+    |> Enum.map(&String.trim_trailing(&1, " "))
+  end
+
+  defp parse_value(:UC, data, _endianness, _explicit) do
+    data
+    |> parse_string_vr()
   end
 
   defp parse_value(:US, data, endianness, _explicit) do
@@ -196,6 +227,11 @@ defmodule Dicom.BinaryFormat do
     |> map_binary_extractor(4, &:binary.decode_unsigned(&1, endianness))
   end
 
+  defp parse_value(:UV, data, endianness, _explicit) do
+    data
+    |> map_binary_extractor(8, &:binary.decode_unsigned(&1, endianness))
+  end
+
   defp parse_value(:SQ, data, endianness, explicitness) do
     {values, <<>>} =
       from_binary_until(data, 0xFFFEE0DD, endianness: endianness, explicit: explicitness)
@@ -205,18 +241,16 @@ defmodule Dicom.BinaryFormat do
   end
 
   defp parse_value(binary_vr, data, _endianness, _explicit)
-       when binary_vr in [:OB] do
-    data
+       when binary_vr in [:OB, :OW, :UN] do
+    [data]
   end
 
   defp parse_value(:DA, data, endianness, explicit) do
     parse_value(:LO, data, endianness, explicit)
-    # |> Enum.map(&parse_date/1)
   end
 
   defp parse_value(:TM, data, endianness, explicit) do
     parse_value(:LO, data, endianness, explicit)
-    # |> Enum.map(&parse_time/1)
   end
 
   defp parse_value(:DT, data, endianness, explicit) do
@@ -225,6 +259,21 @@ defmodule Dicom.BinaryFormat do
 
   defp parse_value(:PN, data, endianness, explicit) do
     parse_value(:LO, data, endianness, explicit)
+  end
+
+  defp parse_value(:SS, data, endianness, _explicit) do
+    data
+    |> map_binary_extractor(2, &parse_signed_16(&1, endianness))
+  end
+
+  defp parse_value(:SL, data, endianness, _explicit) do
+    data
+    |> map_binary_extractor(4, &parse_signed_32(&1, endianness))
+  end
+
+  defp parse_value(:SV, data, endianness, _explicit) do
+    data
+    |> map_binary_extractor(8, &parse_signed_64(&1, endianness))
   end
 
   defp parse_value(vr, data, _endianness, _explicit) do
