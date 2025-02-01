@@ -3,14 +3,16 @@ defmodule Dicom.MixProject do
 
   def project do
     [
-      app: :dicomex,
+      app: :dicom,
       version: "0.1.0",
       elixir: "~> 1.18",
       start_permanent: Mix.env() == :prod,
       deps: deps(),
       name: "Dicom.ex",
+      description: "A pure Elixir DICOM library supporting dataset and network functionality.",
       source_url: "https://github.com/jjedele/dicom.ex",
-      docs: &docs/0
+      docs: &docs/0,
+      package: package()
     ]
   end
 
@@ -30,6 +32,14 @@ defmodule Dicom.MixProject do
     [
       extras: ["README.md"],
       main: "readme"
+    ]
+  end
+
+  defp package() do
+    [
+      name: "dicom_ex",
+      licenses: ["Apache-2.0"],
+      links: %{GitHub: "https://github.com/jjedele/dicom.ex"}
     ]
   end
 end
