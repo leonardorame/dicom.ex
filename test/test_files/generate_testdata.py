@@ -72,6 +72,10 @@ ds.BatteryLevel = "UNLIMITEDTEXT"
 ds.TotalNumberOfStudyRecords = 42424242
 
 
+private_block = ds.private_block(0x4243, "Private Block 01", create=True)
+private_block.add_new(0x01, "SH", "Private Tag")
+
+
 def serialize_single_data_element(
         element: pydicom.DataElement,
         implicit_vr: bool = False,

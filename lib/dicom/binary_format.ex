@@ -3,6 +3,7 @@ defmodule Dicom.BinaryFormat do
   This module implements the DICOM binary data format according to
   [PS 3.5](https://dicom.nema.org/medical/dicom/current/output/chtml/part05/PS3.5.html).
   """
+  require Integer
   alias Dicom.DataSet
   alias Dicom.DataElement
 
@@ -297,6 +298,16 @@ defmodule Dicom.BinaryFormat do
     |> Enum.map(&DataSet.from_elements/1)
   end
 
+  defp get_private_tag_vr(_group_number, element_number) do
+    if element_number <= 0xFF do
+      # Private Creator element
+      :LO
+    else
+      # TODO: maybe at some point we support private tagdict extensions
+      :UN
+    end
+  end
+
   defp parse_encapsulated_pixel_data(data, endianness) do
     <<group::binary-size(2), element::binary-size(2), length::binary-size(4), rest::binary>> =
       data
@@ -341,6 +352,8 @@ defmodule Dicom.BinaryFormat do
     group_number = :binary.decode_unsigned(group_number, endianness)
     element_number = :binary.decode_unsigned(element_number, endianness)
 
+    is_private_element = Integer.is_odd(group_number)
+
     case is_sequence_control_element(group_number, element_number) do
       {true, item_type} ->
         <<data_length::binary-size(4), rest::binary>> = rest
@@ -355,17 +368,22 @@ defmodule Dicom.BinaryFormat do
 
       false ->
         {value_rep, rest} =
-          if explicit do
-            <<value_rep::binary-size(2), rest::binary>> = rest
+          cond do
+            explicit ->
+              <<value_rep::binary-size(2), rest::binary>> = rest
 
-            value_rep = vr_to_atom(value_rep)
+              value_rep = vr_to_atom(value_rep)
 
-            {value_rep, rest}
-          else
-            {:ok, value_rep} =
-              Dicom.TagDict.get_by_tag_parts(group_number, element_number, :vr)
+              {value_rep, rest}
 
-            {value_rep, rest}
+            is_private_element ->
+              {get_private_tag_vr(group_number, element_number), rest}
+
+            true ->
+              {:ok, value_rep} =
+                Dicom.TagDict.get_by_tag_parts(group_number, element_number, :vr)
+
+              {value_rep, rest}
           end
 
         {value_length, rest} =
