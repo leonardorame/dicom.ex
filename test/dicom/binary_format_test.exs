@@ -970,6 +970,36 @@ defmodule Dicom.BinaryFormatTest do
     assert map_size(Enum.at(de.values, 1)) == 11
   end
 
+  test "parses private fields" do
+    expected = %DataElement{
+      group_number: 0x4243,
+      element_number: 0x0010,
+      vr: :LO,
+      values: ["Private Block 01"]
+    }
+
+    sample = %{
+      options: [endianness: :little, explicit: true],
+      data: "434210004c4f10005072697661746520426c6f636b203031"
+    }
+
+    assert_sample_parses_correctly(sample, expected)
+
+    sample = %{
+      options: [endianness: :big, explicit: true],
+      data: "424300104c4f00105072697661746520426c6f636b203031"
+    }
+
+    assert_sample_parses_correctly(sample, expected)
+
+    sample = %{
+      options: [endianness: :little, explicit: false],
+      data: "43421000100000005072697661746520426c6f636b203031"
+    }
+
+    assert_sample_parses_correctly(sample, expected)
+  end
+
   defp is_dicom_file(path) do
     case File.open(path) do
       {:ok, file} ->
