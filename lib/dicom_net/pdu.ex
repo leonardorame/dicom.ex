@@ -136,6 +136,10 @@ defmodule DicomNet.Pdu do
     }
   end
 
+  def from_data(data) when byte_size(data) < 6 do
+    {:error, :no_pdu, <<>>}
+  end
+
   def from_data(data) do
     <<type::8, _r::8, length::32, _rest::binary>> = data
     full_pdu_length = length + 6
