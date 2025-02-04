@@ -38,31 +38,30 @@ defmodule DicomNet.Association do
 
   @impl true
   def handle_info(:read_data, %{socket: socket, buffer: buffer} = state) do
-    case :gen_tcp.recv(socket, 0) do
-      {:error, :closed} ->
-        Logger.info("Association closed by other side.")
-        {:stop, :normal, state}
+    case Pdu.from_data(buffer) do
+      {:ok, pdu, remaining_data} ->
+        Logger.debug("Received PDU")
+        new_state = Map.put(state, :buffer, remaining_data)
+        {new_state, response} = handle_pdu(pdu, new_state)
 
-      {:ok, packet} ->
-        data_updated = buffer <> packet
+        if is_binary(response) do
+          :gen_tcp.send(socket, response)
+        end
 
-        case Pdu.from_data(data_updated) do
-          {:ok, pdu, remaining_data} ->
-            Logger.debug("Received PDU")
-            new_state = Map.put(state, :buffer, remaining_data)
-            {new_state, response} = handle_pdu(pdu, new_state)
+        send(self(), :read_data)
+        {:noreply, new_state}
 
-            if is_binary(response) do
-              :gen_tcp.send(socket, response)
-            end
+      _ ->
+        case :gen_tcp.recv(socket, 0) do
+          {:error, :closed} ->
+            Logger.info("Association closed by other side.")
+            {:stop, :normal, state}
 
+          {:ok, packet} ->
+            data_updated = buffer <> packet
+            new_state = Map.put(state, :buffer, data_updated)
             send(self(), :read_data)
             {:noreply, new_state}
-
-          _ ->
-            send(self(), :read_data)
-            new_sate = Map.put(state, :buffer, data_updated)
-            {:noreply, new_sate}
         end
     end
   end
