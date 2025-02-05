@@ -158,15 +158,16 @@ defmodule DicomNet.Association do
     # TODO this is not always c-store
 
     ds = Dicom.BinaryFormat.from_binary(data, ts_options)
-    commandField = command[256].values 
+    commandField = DataSet.fetch!(command, :CommandField)
+    IO.puts(commandField.values)
 
-    response_ds = case commandField do
-        [1] -> IO.inspect("C-Store")
+    response_ds = case commandField.values do
+        [0x01] -> IO.inspect("C-Store")
             msg = {:dicom, %{operation: :cfind, dataset: ds}}
             send(event_listener, msg)
             handle_cstore(command, ds)
 
-        [32] -> IO.inspect("C-Find")
+        [0x20] -> IO.inspect("C-Find")
             msg = {:dicom, %{operation: :cfind, dataset: ds}}
             #send(event_listener, msg)
             handle_cfind(command, ds)
