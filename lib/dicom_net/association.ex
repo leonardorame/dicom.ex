@@ -158,9 +158,24 @@ defmodule DicomNet.Association do
     # TODO this is not always c-store
 
     ds = Dicom.BinaryFormat.from_binary(data, ts_options)
-    msg = {:dicom, %{operation: :cstore, dataset: ds}}
-    send(event_listener, msg)
-    response_ds = handle_cstore(command, ds)
+    commandField = command[256].values 
+
+    response_ds = case commandField do
+        [1] -> IO.inspect("C-Store")
+            msg = {:dicom, %{operation: :cfind, dataset: ds}}
+            send(event_listener, msg)
+            handle_cstore(command, ds)
+
+        [32] -> IO.inspect("C-Find")
+            msg = {:dicom, %{operation: :cfind, dataset: ds}}
+            #send(event_listener, msg)
+            handle_cfind(command, ds)
+
+        _ -> IO.inspect("command field not determied")
+            msg = {:dicom, %{operation: :cstore, dataset: ds}}
+            send(event_listener, msg)
+            handle_cstore(command, ds)
+      end
 
     response =
       Dicom.BinaryFormat.serialize_command_data_set(response_ds)
@@ -198,5 +213,32 @@ defmodule DicomNet.Association do
       )
 
     response_ds
+  end
+
+  defp handle_cfind(command, _data_set) do
+    asci_de = DataSet.fetch!(command, :AffectedSOPClassUID)
+    mid_de = DataSet.fetch!(command, :MessageID)
+    
+    identifier = build_cfind_identifier()
+
+    response_ds =
+      Dicom.DataSet.from_keyword_list(
+        AffectedSOPClassUID: DataElement.value(asci_de),
+        CommandField: 0x8020,
+        MessageIDBeingRespondedTo: DataElement.value(mid_de),
+        CommandDataSetType: 0x0101, # This field shall be set to the value of 0101H (Null) if no Data Set is present; any other value indicates a Data Set is included in the Message.
+        Status: 0x0000,  # 0x000 Success, 0xff00 Pending
+        #Identifier: identifier 
+      )
+
+    response_ds
+  end
+
+  defp build_cfind_identifier() do
+    identifier = Dicom.DataSet.from_keyword_list(
+        PatientID: "hello"
+      )
+
+    identifier
   end
 end
