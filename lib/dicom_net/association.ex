@@ -170,7 +170,7 @@ defmodule DicomNet.Association do
         [0x20] -> IO.inspect("C-Find")
             msg = {:dicom, %{operation: :cfind, dataset: ds}}
             #send(event_listener, msg)
-            handle_cfind(command, ds)
+            handle_cfind(command, ds, :pending)
 
         _ -> IO.inspect("command field not determied")
             msg = {:dicom, %{operation: :cstore, dataset: ds}}
@@ -216,28 +216,31 @@ defmodule DicomNet.Association do
     response_ds
   end
 
-  defp handle_cfind(command, _data_set) do
+  defp handle_cfind(command, data_set, :pending) do
+    IO.inspect(data_set)
+    qr_level = DataSet.fetch!(data_set, :QueryRetrieveLevel)
     asci_de = DataSet.fetch!(command, :AffectedSOPClassUID)
     mid_de = DataSet.fetch!(command, :MessageID)
-    
-    identifier = build_cfind_identifier()
 
     response_ds =
       Dicom.DataSet.from_keyword_list(
         AffectedSOPClassUID: DataElement.value(asci_de),
         CommandField: 0x8020,
         MessageIDBeingRespondedTo: DataElement.value(mid_de),
-        CommandDataSetType: 0x0101, # This field shall be set to the value of 0101H (Null) if no Data Set is present; any other value indicates a Data Set is included in the Message.
-        Status: 0x0000,  # 0x000 Success, 0xff00 Pending
-        #Identifier: identifier 
+        CommandDataSetType: 0x0000, # This field shall be set to the value of 0101H (Null) if no Data Set is present; any other value indicates a Data Set is included in the Message.
+        Status: 0xff00,  # 0x0000 Success, 0xff00 Pending
+        QueryRetrieveLevel: DataElement.value(qr_level),
+        AccessionNumber: "123",
+        Status: 0x0000  # 0xff0 Success, 0xff00 Pending
       )
 
+    #identifier = build_cfind_identifier()
     response_ds
   end
 
   defp build_cfind_identifier() do
     identifier = Dicom.DataSet.from_keyword_list(
-        PatientID: "hello"
+        AccessionNumber: "hello"
       )
 
     identifier
