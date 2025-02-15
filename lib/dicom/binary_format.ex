@@ -537,6 +537,10 @@ defmodule Dicom.BinaryFormat do
     end
   end
 
+  def serialize_lo(string, _endianness) do
+    string <> <<0>>
+  end
+
   def serialize_cs(string, _endianness) do
     string <> <<0>>
   end
@@ -568,7 +572,7 @@ defmodule Dicom.BinaryFormat do
         :US -> serialize_u16(data_element |> DataElement.value(), endianness)
         :UL -> serialize_u32(data_element |> DataElement.value(), endianness)
         :UI -> serialize_uid(data_element |> DataElement.value(), endianness)
-        :LO -> serialize_u8(data_element |> DataElement.value(), endianness)
+        :LO -> serialize_lo(data_element |> DataElement.value(), endianness)
         :SH -> serialize_sh(data_element |> DataElement.value(), endianness)
         :PN -> serialize_pn(data_element |> DataElement.value(), endianness) 
         :CS -> serialize_cs(data_element |> DataElement.value(), endianness)
