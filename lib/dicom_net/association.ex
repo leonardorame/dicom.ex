@@ -18,16 +18,17 @@ defmodule DicomNet.Association do
   alias DicomNet.Pdu
 
   # Behaviors for C-FIND-SCP
-  @callback print(text :: String.t()) :: :ok | {:error, String.t()}
+  @callback get_cfind_responses() :: :ok | {:error, String.t()}
 
   def start(init_args) do
     GenServer.start(__MODULE__, init_args)
   end
 
   @impl true
-  def init(%{socket: socket, event_listener: event_listener}) do
+  def init(%{socket: socket, event_listener: event_listener, getresponses: getresponses}) do
     # TODO move into function
     initial_state = %{
+      getresponses: getresponses,
       event_listener: event_listener,
       socket: socket,
       state: :waiting_for_association,
@@ -178,7 +179,7 @@ defmodule DicomNet.Association do
         [0x20] -> IO.inspect("C-Find")
             msg = {:dicom, %{operation: :cfind, dataset: ds}}
             #send(event_listener, msg)
-            response_ds = handle_cfind(socket, command, ds, presentation_context_id, ts_options)
+            response_ds = handle_cfind(socket, command, ds, presentation_context_id, ts_options, state)
             Dicom.BinaryFormat.serialize_command_data_set(response_ds)
               |> Pdu.new_data_pdu(presentation_context_id)
               |> Pdu.serialize()
@@ -245,6 +246,7 @@ defmodule DicomNet.Association do
 
   defp cfind_response_data(socket, command, presentation_context_id, response) do
     cfind_response_header(socket, command, presentation_context_id, 0xff00)
+    IO.inspect(response)
     buffer = Dicom.BinaryFormat.serialize_data_data_set(response)
       |> Pdu.new_data_pdu(presentation_context_id, 0x02)
       |> Pdu.serialize()
@@ -252,23 +254,17 @@ defmodule DicomNet.Association do
     :gen_tcp.send(socket, buffer)
   end
 
-  defp handle_cfind(socket, command, data_set, presentation_context_id, ts_options) do
+  defp handle_cfind(socket, command, data_set, presentation_context_id, ts_options, state) do
     asci_de = DataSet.fetch!(command, :AffectedSOPClassUID)
     mid_de = DataSet.fetch!(command, :MessageID)
 
-    # Response 1
-    response =
-      Dicom.DataSet.from_keyword_list(
-        AccessionNumber: "one"
-      )
-    cfind_response_data(socket, command, presentation_context_id, response)
-
-    # Response 2
-    response =
-      Dicom.DataSet.from_keyword_list(
-        AccessionNumber: "two"
-      )
-    cfind_response_data(socket, command, presentation_context_id, response)
+    # state.getresponses is a callback function that must be defined
+    # by the specific implementation. It must return a list
+    # of Dicom.DataSet.from_keyword_list.
+    list = state.getresponses.(data_set)
+    Enum.map(list, fn response ->
+        cfind_response_data(socket, command, presentation_context_id, response)
+    end)
 
     response_tail =
       Dicom.DataSet.from_keyword_list(

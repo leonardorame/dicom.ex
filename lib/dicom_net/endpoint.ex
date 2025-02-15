@@ -21,6 +21,10 @@ defmodule DicomNet.Endpoint do
     GenServer.cast(endpoint, {:register_listener, listener})
   end
 
+  def register_cfind_getresponses(endpoint \\ __MODULE__, function) do
+    GenServer.cast(endpoint, {:register_cfind_getresponses, function})
+  end
+
   @impl true
   def init(port: port) do
     {:ok, listen_socket} =
@@ -30,7 +34,7 @@ defmodule DicomNet.Endpoint do
 
     send(self(), :check_for_connection)
 
-    state = %{listen_socket: listen_socket, listeners: []}
+    state = %{listen_socket: listen_socket, listeners: [], getresponses: nil}
     {:ok, state}
   end
 
@@ -39,7 +43,7 @@ defmodule DicomNet.Endpoint do
     case :gen_tcp.accept(listen_socket, 100) do
       {:ok, client_socket} ->
         {:ok, assoc_pid} =
-          DicomNet.Association.start(%{socket: client_socket, event_listener: self()})
+          DicomNet.Association.start(%{socket: client_socket, event_listener: self(), getresponses: state.getresponses})
 
         :gen_tcp.controlling_process(client_socket, assoc_pid)
 
@@ -64,6 +68,12 @@ defmodule DicomNet.Endpoint do
   @impl true
   def handle_cast({:register_listener, listener}, %{listeners: listeners} = state) do
     new_state = %{state | listeners: [listener | listeners]}
+    {:noreply, new_state}
+  end
+
+  @impl true
+  def handle_cast({:register_cfind_getresponses, function}, state) do
+    new_state = %{state | getresponses: function}
     {:noreply, new_state}
   end
 end

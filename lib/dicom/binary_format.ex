@@ -525,6 +525,7 @@ defmodule Dicom.BinaryFormat do
     end
   end
 
+  def serialize_u8(num, :little), do: <<num::unsigned-integer-little-16>>
   def serialize_u16(num, :little), do: <<num::unsigned-integer-little-16>>
   def serialize_u32(num, :little), do: <<num::unsigned-integer-little-32>>
 
@@ -541,7 +542,19 @@ defmodule Dicom.BinaryFormat do
   end
 
   def serialize_sh(string, _endianness) do
-    string <> <<0>>
+    if rem(byte_size(string), 2) == 1 do
+      string <> <<0>>
+    else
+      string
+    end
+  end
+
+  def serialize_pn(string, _endianness) do
+    if rem(byte_size(string), 2) == 1 do
+      string <> <<0>>
+    else
+      string
+    end
   end
 
   def serialize_data_element(data_element, endianness: endianness, explicit: explicit) do
@@ -555,8 +568,9 @@ defmodule Dicom.BinaryFormat do
         :US -> serialize_u16(data_element |> DataElement.value(), endianness)
         :UL -> serialize_u32(data_element |> DataElement.value(), endianness)
         :UI -> serialize_uid(data_element |> DataElement.value(), endianness)
-        :LO -> serialize_u16(data_element |> DataElement.value(), endianness)
+        :LO -> serialize_u8(data_element |> DataElement.value(), endianness)
         :SH -> serialize_sh(data_element |> DataElement.value(), endianness)
+        :PN -> serialize_pn(data_element |> DataElement.value(), endianness) 
         :CS -> serialize_cs(data_element |> DataElement.value(), endianness)
       end
 
@@ -566,7 +580,7 @@ defmodule Dicom.BinaryFormat do
         group <> element <> value_length <> value
 
       true ->
-        value_length = serialize_u32(byte_size(value) + 2, endianness) 
+        value_length = serialize_u16(byte_size(value), endianness) 
         group <> element <> to_string(data_element.vr) <> value_length <> value
     end
   end
