@@ -246,8 +246,8 @@ defmodule DicomNet.Association do
       )
 
     response = Dicom.BinaryFormat.serialize_data_data_set(response_rsp1)
-      |> Pdu.new_data_pdu(presentation_context_id)
-      |> Pdu.serialize_data_pdu()
+      |> Pdu.new_data_pdu(presentation_context_id, 0x02)
+      |> Pdu.serialize()
 
     :gen_tcp.send(socket, response)
 
@@ -275,8 +275,8 @@ defmodule DicomNet.Association do
       )
 
     response = Dicom.BinaryFormat.serialize_data_data_set(response_rsp1)
-      |> Pdu.new_data_pdu(presentation_context_id)
-      |> Pdu.serialize_data_pdu()
+      |> Pdu.new_data_pdu(presentation_context_id, 0x02)
+      |> Pdu.serialize()
 
     :gen_tcp.send(socket, response)
     response_tail =

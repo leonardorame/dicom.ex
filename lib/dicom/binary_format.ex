@@ -622,8 +622,6 @@ defmodule Dicom.BinaryFormat do
   end
 
   def serialize_data_data_set(data_set) do
-    # command data set per standard is little endian, implicit vr
-    # https://dicom.nema.org/dicom/2013/output/chtml/part07/sect_6.3.html
     serialization_options = [endianness: :little, explicit: true]
 
     serialized =
