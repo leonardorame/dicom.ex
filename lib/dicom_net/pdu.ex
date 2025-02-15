@@ -278,7 +278,6 @@ defmodule DicomNet.Pdu do
     }
   end
 
-
   def new_association_release_response_pdu() do
     %Pdu{
       type: :association_release_response,

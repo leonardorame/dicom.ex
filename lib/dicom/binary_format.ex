@@ -544,17 +544,6 @@ defmodule Dicom.BinaryFormat do
     string <> <<0>>
   end
 
-  def vr_to_hex(vr_atom) do
-    case vr_atom do
-      :US -> "US"
-      :UL -> "UL"
-      :UI -> "UI"
-      :LO -> "LO"
-      :SH -> "SH"
-      :CS -> "CS"
-    end
-  end
-
   def serialize_data_element(data_element, endianness: endianness, explicit: true) do
     group = serialize_u16(data_element.group_number, endianness)
     element = serialize_u16(data_element.element_number, endianness)
@@ -572,7 +561,7 @@ defmodule Dicom.BinaryFormat do
 
     value_length = serialize_u32(byte_size(value) + 2, endianness) 
 
-    res = group <> element <> vr_to_hex(data_element.vr) <> value_length <> value
+    res = group <> element <> to_string(data_element.vr) <> value_length <> value
 
     res
   end
