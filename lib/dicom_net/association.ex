@@ -42,6 +42,7 @@ defmodule DicomNet.Association do
       {:ok, pdu, remaining_data} ->
         Logger.debug("Received PDU")
         new_state = Map.put(state, :buffer, remaining_data)
+        new_state = Map.put(new_state, :socket, socket)
         {new_state, response} = handle_pdu(pdu, new_state)
 
         if is_binary(response) do
@@ -96,6 +97,7 @@ defmodule DicomNet.Association do
       Pdu.new_associate_accept_response_pdu(association_data)
       |> Pdu.serialize()
 
+
     {new_state, response}
   end
 
@@ -144,7 +146,8 @@ defmodule DicomNet.Association do
            state: :receiving_data,
            received_data: received_data,
            association: %{presentation_contexts: presentation_contexts},
-           command: command
+           command: command,
+           socket: socket
          } = state
        ) do
     Logger.debug("Received all data fragments")
@@ -157,13 +160,12 @@ defmodule DicomNet.Association do
 
     # TODO this is not always c-store
 
-    ds = Dicom.BinaryFormat.from_binary(data, ts_options)
+    ds = Dicom.BinaryFormat.from_binary(data, ts_options) 
     commandField = DataSet.fetch!(command, :CommandField)
-    IO.puts(commandField.values)
 
     response = case commandField.values do
         [0x01] -> IO.inspect("C-Store")
-            msg = {:dicom, %{operation: :cfind, dataset: ds}}
+            msg = {:dicom, %{operation: :cstore, dataset: ds}}
             send(event_listener, msg)
             response_ds = handle_cstore(command, ds)
             Dicom.BinaryFormat.serialize_command_data_set(response_ds)
@@ -173,18 +175,12 @@ defmodule DicomNet.Association do
         [0x20] -> IO.inspect("C-Find")
             msg = {:dicom, %{operation: :cfind, dataset: ds}}
             #send(event_listener, msg)
-            response_ds = handle_cfind(command, ds, :pending)
+            response_ds = handle_cfind(socket, command, ds, presentation_context_id, ts_options)
+            Dicom.BinaryFormat.serialize_command_data_set(response_ds)
+              |> Pdu.new_data_pdu(presentation_context_id)
+              |> Pdu.serialize()
             # The response is a list of datasets that should? be concatenated into
             # the response buffer 
-            {responses, final_buffer} = Enum.map_reduce(response_ds, "", fn res, acc ->
-              resp = Dicom.BinaryFormat.serialize_command_data_set(res)
-              {resp, acc <> resp}
-            end)
-
-            # serialize the final_buffer
-            final_buffer
-                |> Pdu.new_data_pdu(presentation_context_id)
-                |> Pdu.serialize()
 
         _ -> IO.inspect("command field not determied")
             msg = {:dicom, %{operation: :cstore, dataset: ds}}
@@ -224,8 +220,7 @@ defmodule DicomNet.Association do
     response_ds
   end
 
-  defp handle_cfind(command, data_set, :pending) do
-    IO.inspect(data_set)
+  defp handle_cfind(socket, command, data_set, presentation_context_id, ts_options) do
     qr_level = DataSet.fetch!(data_set, :QueryRetrieveLevel)
     asci_de = DataSet.fetch!(command, :AffectedSOPClassUID)
     mid_de = DataSet.fetch!(command, :MessageID)
@@ -235,33 +230,69 @@ defmodule DicomNet.Association do
         AffectedSOPClassUID: DataElement.value(asci_de),
         CommandField: 0x8020,
         MessageIDBeingRespondedTo: DataElement.value(mid_de),
-        QueryRetrieveLevel: DataElement.value(qr_level),
-        CommandDataSetType: 0x0000, # This field shall be set to the value of 0101H (Null) if no Data Set is present; any other value indicates a Data Set is included in the Message.
-        Status: 0xff00,  # 0x0000 Success, 0xff00 Pending
+        CommandDataSetType: 0x0001, # This field shall be set to the value of 0101H (Null) if no Data Set is present; any other value indicates a Data Set is included in the Message.
+        Status: 0xff00 # 0x0000 Success, 0xff00 Pending
       )
+
+    response_head_bin = Dicom.BinaryFormat.serialize_command_data_set(response_head)
+      |> Pdu.new_data_pdu(presentation_context_id) 
+      |> Pdu.serialize()
+
+    :gen_tcp.send(socket, response_head_bin)
 
     response_rsp1 =
       Dicom.DataSet.from_keyword_list(
-        CommandDataSetType: 0x0000, # This field shall be set to the value of 0101H (Null) if no Data Set is present; any other value indicates a Data Set is included in the Message.
-        Status: 0xff00,  # 0x0000 Success, 0xff00 Pending
-        AccessionNumber: "123",
+        AccessionNumber: "bbb"
       )
 
-    response_rsp2 =
+    response = Dicom.BinaryFormat.serialize_data_data_set(response_rsp1)
+      |> Pdu.new_data_pdu(presentation_context_id)
+      |> Pdu.serialize_data_pdu()
+
+    :gen_tcp.send(socket, response)
+
+
+    # --- Response 2
+
+    response_head =
       Dicom.DataSet.from_keyword_list(
-        CommandDataSetType: 0x0000, # This field shall be set to the value of 0101H (Null) if no Data Set is present; any other value indicates a Data Set is included in the Message.
-        Status: 0xff00,  # 0x0000 Success, 0xff00 Pending
-        AccessionNumber: "AAA",
+        AffectedSOPClassUID: DataElement.value(asci_de),
+        CommandField: 0x8020,
+        MessageIDBeingRespondedTo: DataElement.value(mid_de),
+        CommandDataSetType: 0x0001, # This field shall be set to the value of 0101H (Null) if no Data Set is present; any other value indicates a Data Set is included in the Message.
+        Status: 0xff00 # 0x0000 Success, 0xff00 Pending
       )
 
+    response_head_bin = Dicom.BinaryFormat.serialize_command_data_set(response_head)
+      |> Pdu.new_data_pdu(presentation_context_id) 
+      |> Pdu.serialize()
+
+    :gen_tcp.send(socket, response_head_bin)
+
+    response_rsp1 =
+      Dicom.DataSet.from_keyword_list(
+        AccessionNumber: "abc"
+      )
+
+    response = Dicom.BinaryFormat.serialize_data_data_set(response_rsp1)
+      |> Pdu.new_data_pdu(presentation_context_id)
+      |> Pdu.serialize_data_pdu()
+
+    :gen_tcp.send(socket, response)
     response_tail =
       Dicom.DataSet.from_keyword_list(
+        AffectedSOPClassUID: DataElement.value(asci_de),
+        CommandField: 0x8020,
+        MessageIDBeingRespondedTo: DataElement.value(mid_de),
+        QueryRetrieveLevel: DataElement.value(qr_level),
         CommandDataSetType: 0x0101, # This field shall be set to the value of 0101H (Null) if no Data Set is present; any other value indicates a Data Set is included in the Message.
         Status: 0x0000  # 0xff0 Success, 0xff00 Pending
       )
+    #response = Dicom.BinaryFormat.serialize_command_data_set(response_tail)
+    #  |> Pdu.new_data_pdu(presentation_context_id)
+    #  |> Pdu.serialize()
 
-    # Return a list of the datasets in revese order
-    [response_tail, response_rsp1, response_rsp2, response_head]
+    response_tail
   end
 
   defp build_cfind_identifier() do

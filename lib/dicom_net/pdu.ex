@@ -218,6 +218,16 @@ defmodule DicomNet.Pdu do
     pdu
   end
 
+  def serialize_data_pdu(%Pdu{
+        type: :data,
+        data: %{presentation_context_id: presentation_context_id, data: data}
+      }) do
+    pdv_length = byte_size(data) + 2
+    pdv = <<pdv_length::32, presentation_context_id::8, 2::8, data::binary>>
+    pdu = <<4::8, 0::8, byte_size(pdv)::32, pdv::binary>>
+    pdu
+  end
+
   def serialize(%Pdu{type: :association_release_response}) do
     <<6::8, 0::8, 4::32, 0::32>>
   end
@@ -276,6 +286,7 @@ defmodule DicomNet.Pdu do
       }
     }
   end
+
 
   def new_association_release_response_pdu() do
     %Pdu{

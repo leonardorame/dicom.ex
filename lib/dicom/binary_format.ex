@@ -544,9 +544,44 @@ defmodule Dicom.BinaryFormat do
     string <> <<0>>
   end
 
+  def vr_to_hex(vr_atom) do
+    case vr_atom do
+      :US -> "US"
+      :UL -> "UL"
+      :UI -> "UI"
+      :LO -> "LO"
+      :SH -> "SH"
+      :CS -> "CS"
+    end
+  end
+
+  def serialize_data_element(data_element, endianness: endianness, explicit: true) do
+    group = serialize_u16(data_element.group_number, endianness)
+    element = serialize_u16(data_element.element_number, endianness)
+
+    # TODO cannot handle VM > 1
+    value =
+      case data_element.vr do
+        :US -> serialize_u16(data_element |> DataElement.value(), endianness)
+        :UL -> serialize_u32(data_element |> DataElement.value(), endianness)
+        :UI -> serialize_uid(data_element |> DataElement.value(), endianness)
+        :LO -> serialize_u16(data_element |> DataElement.value(), endianness)
+        :SH -> serialize_sh(data_element |> DataElement.value(), endianness)
+        :CS -> serialize_cs(data_element |> DataElement.value(), endianness)
+      end
+
+    value_length = serialize_u32(byte_size(value) + 2, endianness) 
+
+    res = group <> element <> vr_to_hex(data_element.vr) <> value_length <> value
+
+    res
+  end
+
+
   def serialize_data_element(data_element, endianness: endianness, explicit: false) do
     group = serialize_u16(data_element.group_number, endianness)
     element = serialize_u16(data_element.element_number, endianness)
+
 
     # TODO cannot handle VM > 1
     value =
@@ -585,4 +620,20 @@ defmodule Dicom.BinaryFormat do
 
     serialized
   end
+
+  def serialize_data_data_set(data_set) do
+    # command data set per standard is little endian, implicit vr
+    # https://dicom.nema.org/dicom/2013/output/chtml/part07/sect_6.3.html
+    serialization_options = [endianness: :little, explicit: true]
+
+    serialized =
+      for {_tag, de} <- data_set do
+        Dicom.BinaryFormat.serialize_data_element(de, serialization_options)
+      end
+      |> Enum.into(<<>>)
+
+    serialized
+  end
+
+
 end
