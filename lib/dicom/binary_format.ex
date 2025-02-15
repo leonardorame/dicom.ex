@@ -544,30 +544,7 @@ defmodule Dicom.BinaryFormat do
     string <> <<0>>
   end
 
-  def serialize_data_element(data_element, endianness: endianness, explicit: true) do
-    group = serialize_u16(data_element.group_number, endianness)
-    element = serialize_u16(data_element.element_number, endianness)
-
-    # TODO cannot handle VM > 1
-    value =
-      case data_element.vr do
-        :US -> serialize_u16(data_element |> DataElement.value(), endianness)
-        :UL -> serialize_u32(data_element |> DataElement.value(), endianness)
-        :UI -> serialize_uid(data_element |> DataElement.value(), endianness)
-        :LO -> serialize_u16(data_element |> DataElement.value(), endianness)
-        :SH -> serialize_sh(data_element |> DataElement.value(), endianness)
-        :CS -> serialize_cs(data_element |> DataElement.value(), endianness)
-      end
-
-    value_length = serialize_u32(byte_size(value) + 2, endianness) 
-
-    res = group <> element <> to_string(data_element.vr) <> value_length <> value
-
-    res
-  end
-
-
-  def serialize_data_element(data_element, endianness: endianness, explicit: false) do
+  def serialize_data_element(data_element, endianness: endianness, explicit: explicit) do
     group = serialize_u16(data_element.group_number, endianness)
     element = serialize_u16(data_element.element_number, endianness)
 
@@ -583,9 +560,15 @@ defmodule Dicom.BinaryFormat do
         :CS -> serialize_cs(data_element |> DataElement.value(), endianness)
       end
 
-    value_length = serialize_u32(byte_size(value), endianness)
+    case explicit do
+      false ->
+        value_length = serialize_u32(byte_size(value), endianness)
+        group <> element <> value_length <> value
 
-    group <> element <> value_length <> value
+      true ->
+        value_length = serialize_u32(byte_size(value) + 2, endianness) 
+        group <> element <> to_string(data_element.vr) <> value_length <> value
+    end
   end
 
   def serialize_command_data_set(data_set) do
