@@ -17,6 +17,9 @@ defmodule DicomNet.Association do
   alias Dicom.DataElement
   alias DicomNet.Pdu
 
+  # Behaviors for C-FIND-SCP
+  @callback print(text :: String.t()) :: :ok | {:error, String.t()}
+
   def start(init_args) do
     GenServer.start(__MODULE__, init_args)
   end
@@ -220,77 +223,61 @@ defmodule DicomNet.Association do
     response_ds
   end
 
-  defp handle_cfind(socket, command, data_set, presentation_context_id, ts_options) do
-    qr_level = DataSet.fetch!(data_set, :QueryRetrieveLevel)
+  defp cfind_response_header(socket, command, presentation_context_id, status) do
     asci_de = DataSet.fetch!(command, :AffectedSOPClassUID)
     mid_de = DataSet.fetch!(command, :MessageID)
 
-    response_head =
+    response =
       Dicom.DataSet.from_keyword_list(
         AffectedSOPClassUID: DataElement.value(asci_de),
         CommandField: 0x8020,
         MessageIDBeingRespondedTo: DataElement.value(mid_de),
         CommandDataSetType: 0x0001, # This field shall be set to the value of 0101H (Null) if no Data Set is present; any other value indicates a Data Set is included in the Message.
-        Status: 0xff00 # 0x0000 Success, 0xff00 Pending
+        Status: status # 0x0000 Success, 0xff00 Pending
       )
 
-    response_head_bin = Dicom.BinaryFormat.serialize_command_data_set(response_head)
+    buffer = Dicom.BinaryFormat.serialize_command_data_set(response)
       |> Pdu.new_data_pdu(presentation_context_id) 
       |> Pdu.serialize()
 
-    :gen_tcp.send(socket, response_head_bin)
+    :gen_tcp.send(socket, buffer)
+  end
 
-    response_rsp1 =
-      Dicom.DataSet.from_keyword_list(
-        AccessionNumber: "bbb"
-      )
-
-    response = Dicom.BinaryFormat.serialize_data_data_set(response_rsp1)
+  defp cfind_response_data(socket, command, presentation_context_id, response) do
+    cfind_response_header(socket, command, presentation_context_id, 0xff00)
+    buffer = Dicom.BinaryFormat.serialize_data_data_set(response)
       |> Pdu.new_data_pdu(presentation_context_id, 0x02)
       |> Pdu.serialize()
 
-    :gen_tcp.send(socket, response)
+    :gen_tcp.send(socket, buffer)
+  end
 
+  defp handle_cfind(socket, command, data_set, presentation_context_id, ts_options) do
+    asci_de = DataSet.fetch!(command, :AffectedSOPClassUID)
+    mid_de = DataSet.fetch!(command, :MessageID)
 
-    # --- Response 2
-
-    response_head =
+    # Response 1
+    response =
       Dicom.DataSet.from_keyword_list(
-        AffectedSOPClassUID: DataElement.value(asci_de),
-        CommandField: 0x8020,
-        MessageIDBeingRespondedTo: DataElement.value(mid_de),
-        CommandDataSetType: 0x0001, # This field shall be set to the value of 0101H (Null) if no Data Set is present; any other value indicates a Data Set is included in the Message.
-        Status: 0xff00 # 0x0000 Success, 0xff00 Pending
+        AccessionNumber: "one"
       )
+    cfind_response_data(socket, command, presentation_context_id, response)
 
-    response_head_bin = Dicom.BinaryFormat.serialize_command_data_set(response_head)
-      |> Pdu.new_data_pdu(presentation_context_id) 
-      |> Pdu.serialize()
-
-    :gen_tcp.send(socket, response_head_bin)
-
-    response_rsp1 =
+    # Response 2
+    response =
       Dicom.DataSet.from_keyword_list(
-        AccessionNumber: "abc"
+        AccessionNumber: "two"
       )
+    cfind_response_data(socket, command, presentation_context_id, response)
 
-    response = Dicom.BinaryFormat.serialize_data_data_set(response_rsp1)
-      |> Pdu.new_data_pdu(presentation_context_id, 0x02)
-      |> Pdu.serialize()
-
-    :gen_tcp.send(socket, response)
     response_tail =
       Dicom.DataSet.from_keyword_list(
         AffectedSOPClassUID: DataElement.value(asci_de),
         CommandField: 0x8020,
         MessageIDBeingRespondedTo: DataElement.value(mid_de),
-        QueryRetrieveLevel: DataElement.value(qr_level),
         CommandDataSetType: 0x0101, # This field shall be set to the value of 0101H (Null) if no Data Set is present; any other value indicates a Data Set is included in the Message.
         Status: 0x0000  # 0xff0 Success, 0xff00 Pending
       )
-    #response = Dicom.BinaryFormat.serialize_command_data_set(response_tail)
-    #  |> Pdu.new_data_pdu(presentation_context_id)
-    #  |> Pdu.serialize()
 
     response_tail
   end
