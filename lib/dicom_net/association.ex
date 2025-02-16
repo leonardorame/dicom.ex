@@ -165,7 +165,7 @@ defmodule DicomNet.Association do
     commandField = DataSet.fetch!(command, :CommandField)
 
     response = case commandField.values do
-        [0x01] -> IO.inspect("C-Store")
+        [0x01] -> Logger.debug("Start handling C-Store")
             msg = {:dicom, %{operation: :cstore, dataset: ds}}
             send(event_listener, msg)
             response_ds = handle_cstore(command, ds)
@@ -173,9 +173,10 @@ defmodule DicomNet.Association do
               |> Pdu.new_data_pdu(presentation_context_id)
               |> Pdu.serialize()
 
-        [0x20] -> IO.inspect("C-Find")
+        [0x20] -> Logger.debug("Start handling C-Find")
             case state.getresponses do
               nil -> 
+                  Logger.debug("No function getresponses defined. Returning Failed: Unable to process.")
                   # Returns Failed Unable to Process when getresponses is not defined.
                   asci_de = DataSet.fetch!(command, :AffectedSOPClassUID)
                   mid_de = DataSet.fetch!(command, :MessageID)
@@ -184,6 +185,7 @@ defmodule DicomNet.Association do
                     |> Pdu.new_data_pdu(presentation_context_id)
                     |> Pdu.serialize()
               _ -> 
+                  Logger.debug("Function getresponses is defined, returning responses to the caller.")
                   msg = {:dicom, %{operation: :cfind, dataset: ds}}
                   #send(event_listener, msg)
                   response_ds = handle_cfind(socket, command, ds, presentation_context_id, ts_options, state)
