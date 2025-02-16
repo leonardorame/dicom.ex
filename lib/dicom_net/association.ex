@@ -221,7 +221,7 @@ defmodule DicomNet.Association do
     response_ds
   end
 
-  defp cfind_response_header(socket, command, presentation_context_id, status) do
+  defp cfind_response_header(command, presentation_context_id, status) do
     asci_de = DataSet.fetch!(command, :AffectedSOPClassUID)
     mid_de = DataSet.fetch!(command, :MessageID)
 
@@ -234,20 +234,15 @@ defmodule DicomNet.Association do
         Status: status # 0x0000 Success, 0xff00 Pending
       )
 
-    buffer = Dicom.BinaryFormat.serialize_command_data_set(response)
+    Dicom.BinaryFormat.serialize_command_data_set(response)
       |> Pdu.new_data_pdu(presentation_context_id) 
       |> Pdu.serialize()
-
-    :gen_tcp.send(socket, buffer)
   end
 
-  defp cfind_response_data(socket, command, presentation_context_id, response) do
-    cfind_response_header(socket, command, presentation_context_id, 0xff00)
-    buffer = Dicom.BinaryFormat.serialize_data_data_set(response)
+  defp cfind_response_data(presentation_context_id, response) do
+    Dicom.BinaryFormat.serialize_data_data_set(response)
       |> Pdu.new_data_pdu(presentation_context_id, 0x02)
       |> Pdu.serialize()
-
-    :gen_tcp.send(socket, buffer)
   end
 
   defp handle_cfind(socket, command, data_set, presentation_context_id, ts_options, state) do
@@ -259,7 +254,10 @@ defmodule DicomNet.Association do
     # of Dicom.DataSet.from_keyword_list.
     list = state.getresponses.(data_set)
     Enum.map(list, fn response ->
-        cfind_response_data(socket, command, presentation_context_id, response)
+        headerbuffer = cfind_response_header(command, presentation_context_id, 0xff00)
+        :gen_tcp.send(socket, headerbuffer)
+        databuffer = cfind_response_data(presentation_context_id, response)
+        :gen_tcp.send(socket, databuffer)
     end)
 
     response_tail =
