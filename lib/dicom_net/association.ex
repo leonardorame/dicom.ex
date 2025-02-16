@@ -240,7 +240,7 @@ defmodule DicomNet.Association do
   end
 
   defp cfind_response_data(presentation_context_id, response) do
-    Dicom.BinaryFormat.serialize_data_data_set(response)
+    Dicom.BinaryFormat.serialize(response, [endianness: :little, explicit: true])
       |> Pdu.new_data_pdu(presentation_context_id, 0x02)
       |> Pdu.serialize()
   end
