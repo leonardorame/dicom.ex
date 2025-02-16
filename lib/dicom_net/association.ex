@@ -17,9 +17,6 @@ defmodule DicomNet.Association do
   alias Dicom.DataElement
   alias DicomNet.Pdu
 
-  # Behaviors for C-FIND-SCP
-  @callback get_cfind_responses() :: :ok | {:error, String.t()}
-
   def start(init_args) do
     GenServer.start(__MODULE__, init_args)
   end
@@ -246,7 +243,6 @@ defmodule DicomNet.Association do
 
   defp cfind_response_data(socket, command, presentation_context_id, response) do
     cfind_response_header(socket, command, presentation_context_id, 0xff00)
-    IO.inspect(response)
     buffer = Dicom.BinaryFormat.serialize_data_data_set(response)
       |> Pdu.new_data_pdu(presentation_context_id, 0x02)
       |> Pdu.serialize()
