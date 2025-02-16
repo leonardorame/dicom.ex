@@ -525,7 +525,6 @@ defmodule Dicom.BinaryFormat do
     end
   end
 
-  def serialize_u8(num, :little), do: <<num::unsigned-integer-little-16>>
   def serialize_u16(num, :little), do: <<num::unsigned-integer-little-16>>
   def serialize_u32(num, :little), do: <<num::unsigned-integer-little-32>>
 
