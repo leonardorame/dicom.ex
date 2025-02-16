@@ -272,10 +272,10 @@ defmodule DicomNet.Association do
     mid_de = DataSet.fetch!(command, :MessageID)
 
     # state.getresponses is a callback function that must be defined
-    # by the specific implementation. It must return a list
+    # by the specific implementation. It must return a stream
     # of Dicom.DataSet.from_keyword_list.
-    list = state.getresponses.(data_set)
-    Enum.map(list, fn response ->
+    stream = state.getresponses.(data_set)
+    Enum.map(stream, fn response ->
         headerbuffer = cfind_response_header(command, presentation_context_id, 0xff00)
         :gen_tcp.send(socket, headerbuffer)
         databuffer = cfind_response_data(presentation_context_id, response)
