@@ -174,14 +174,24 @@ defmodule DicomNet.Association do
               |> Pdu.serialize()
 
         [0x20] -> IO.inspect("C-Find")
-            msg = {:dicom, %{operation: :cfind, dataset: ds}}
-            #send(event_listener, msg)
-            response_ds = handle_cfind(socket, command, ds, presentation_context_id, ts_options, state)
-            Dicom.BinaryFormat.serialize_command_data_set(response_ds)
-              |> Pdu.new_data_pdu(presentation_context_id)
-              |> Pdu.serialize()
-            # The response is a list of datasets that should? be concatenated into
-            # the response buffer 
+            case state.getresponses do
+              nil -> 
+                  # Returns Failed Unable to Process when getresponses is not defined.
+                  asci_de = DataSet.fetch!(command, :AffectedSOPClassUID)
+                  mid_de = DataSet.fetch!(command, :MessageID)
+                  response_ds = cfind_response_tail(asci_de, mid_de, 0xC001)
+                  Dicom.BinaryFormat.serialize_command_data_set(response_ds)
+                    |> Pdu.new_data_pdu(presentation_context_id)
+                    |> Pdu.serialize()
+              _ -> 
+                  msg = {:dicom, %{operation: :cfind, dataset: ds}}
+                  #send(event_listener, msg)
+                  response_ds = handle_cfind(socket, command, ds, presentation_context_id, ts_options, state)
+                  Dicom.BinaryFormat.serialize_command_data_set(response_ds)
+                    |> Pdu.new_data_pdu(presentation_context_id)
+                    |> Pdu.serialize()
+            end
+            
 
         _ -> IO.inspect("command field not determied")
             msg = {:dicom, %{operation: :cstore, dataset: ds}}
@@ -245,6 +255,16 @@ defmodule DicomNet.Association do
       |> Pdu.serialize()
   end
 
+  defp cfind_response_tail(affectedsopclassuid, messageidbeingrespondedto, status) do
+      Dicom.DataSet.from_keyword_list(
+        AffectedSOPClassUID: DataElement.value(affectedsopclassuid),
+        CommandField: 0x8020,
+        MessageIDBeingRespondedTo: DataElement.value(messageidbeingrespondedto),
+        CommandDataSetType: 0x0101, # This field shall be set to the value of 0101H (Null) if no Data Set is present; any other value indicates a Data Set is included in the Message.
+        Status: status  # 0xff0 Success, 0xff00 Pending
+      )
+  end
+
   defp handle_cfind(socket, command, data_set, presentation_context_id, ts_options, state) do
     asci_de = DataSet.fetch!(command, :AffectedSOPClassUID)
     mid_de = DataSet.fetch!(command, :MessageID)
@@ -260,16 +280,7 @@ defmodule DicomNet.Association do
         :gen_tcp.send(socket, databuffer)
     end)
 
-    response_tail =
-      Dicom.DataSet.from_keyword_list(
-        AffectedSOPClassUID: DataElement.value(asci_de),
-        CommandField: 0x8020,
-        MessageIDBeingRespondedTo: DataElement.value(mid_de),
-        CommandDataSetType: 0x0101, # This field shall be set to the value of 0101H (Null) if no Data Set is present; any other value indicates a Data Set is included in the Message.
-        Status: 0x0000  # 0xff0 Success, 0xff00 Pending
-      )
-
-    response_tail
+    response_tail = cfind_response_tail(asci_de, mid_de, 0x0000)
   end
 
   defp build_cfind_identifier() do
