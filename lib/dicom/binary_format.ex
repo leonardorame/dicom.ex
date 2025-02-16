@@ -611,7 +611,6 @@ defmodule Dicom.BinaryFormat do
   end
 
   def serialize(data_set, [endianness: endianess, explicit: explicit] = serialization_options) do
-    IO.inspect(serialization_options)
     serialized =
       for {_tag, de} <- data_set do
         Dicom.BinaryFormat.serialize_data_element(de, serialization_options)
