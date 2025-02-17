@@ -2,7 +2,62 @@ defmodule Dicom.BinaryFormatTest do
   alias Dicom.DataElement
   alias Dicom.DataSet
   alias Dicom.BinaryFormat
-  use ExUnit.Case
+
+  @samples [
+    %{
+      element: %DataElement{
+        group_number: 0x0008,
+        element_number: 0x0055,
+        vr: :AE,
+        values: ["AETITLE"]
+      },
+      explicit_vr_little_endian: "080055004145080041455449544c4520",
+      implicit_vr_little_endian: "080055000800000041455449544c4520",
+      explicit_vr_big_endian: "000800554145000841455449544c4520"
+    },
+    %{
+      element: %DataElement{
+        group_number: 0x0010,
+        element_number: 0x1010,
+        vr: :AS,
+        values: ["042Y"]
+      },
+      explicit_vr_little_endian: "100010104153040030343259",
+      implicit_vr_little_endian: "100010100400000030343259",
+      explicit_vr_big_endian: "001010104153000430343259"
+    },
+    %{
+      element: %DataElement{
+        group_number: 0x0014,
+        element_number: 0x0202,
+        vr: :AT,
+        values: [0x00020010]
+      },
+      explicit_vr_little_endian: "140002024154040002001000",
+      implicit_vr_little_endian: "140002020400000002001000",
+      explicit_vr_big_endian: "001402024154000400020010"
+    },
+    %{
+      element: %DataElement{
+        group_number: 0x0008,
+        element_number: 0x0008,
+        vr: :CS,
+        values: ["CODESTRING"]
+      },
+      explicit_vr_little_endian: "0800080043530a00434f4445535452494e47",
+      implicit_vr_little_endian: "080008000a000000434f4445535452494e47",
+      explicit_vr_big_endian: "000800084353000a434f4445535452494e47"
+    }
+  ]
+
+  use ExUnit.Case,
+    async: true,
+    parameterize:
+      for(
+        sample <- @samples,
+        ts <- [:explicit_vr_little_endian, :implicit_vr_little_endian, :explicit_vr_big_endian],
+        do: %{sample: sample, ts: ts}
+      )
 
   defp parse_test_sample(%{options: options, data: data}) do
     data = :binary.decode_hex(data)
@@ -27,124 +82,22 @@ defmodule Dicom.BinaryFormatTest do
     assert actual == expected
   end
 
-  test "parses application entity title (AE) fields" do
-    expected = %DataElement{
-      group_number: 0x0008,
-      element_number: 0x0055,
-      vr: :AE,
-      values: ["AETITLE"]
-    }
+  test "parses data element", %{sample: sample, ts: ts} do
+    IO.inspect({sample[:element].vr, ts})
 
-    sample = %{
-      options: [endianness: :little, explicit: true],
-      data: "080055004145080041455449544c4520"
-    }
+    options =
+      case ts do
+        :explicit_vr_little_endian -> [endianness: :little, explicit: true]
+        :implicit_vr_little_endian -> [endianness: :little, explicit: false]
+        :explicit_vr_big_endian -> [endianness: :big, explicit: true]
+      end
 
-    assert_sample_parses_correctly(sample, expected)
+    expected_element = sample[:element]
 
-    sample = %{
-      options: [endianness: :big, explicit: true],
-      data: "000800554145000841455449544c4520"
-    }
+    {:ok, {actual_element, <<>>}} =
+      BinaryFormat.read_next_data_element(:binary.decode_hex(sample[ts]), options)
 
-    assert_sample_parses_correctly(sample, expected)
-
-    sample = %{
-      options: [endianness: :little, explicit: false],
-      data: "080055000800000041455449544c4520"
-    }
-
-    assert_sample_parses_correctly(sample, expected)
-  end
-
-  test "parses age string (AS) fields" do
-    expected = %DataElement{
-      group_number: 0x0010,
-      element_number: 0x1010,
-      vr: :AS,
-      values: ["042Y"]
-    }
-
-    sample = %{
-      options: [endianness: :little, explicit: true],
-      data: "100010104153040030343259"
-    }
-
-    assert_sample_parses_correctly(sample, expected)
-
-    sample = %{
-      options: [endianness: :big, explicit: true],
-      data: "001010104153000430343259"
-    }
-
-    assert_sample_parses_correctly(sample, expected)
-
-    sample = %{
-      options: [endianness: :little, explicit: false],
-      data: "100010100400000030343259"
-    }
-
-    assert_sample_parses_correctly(sample, expected)
-  end
-
-  test "parses attribute tag (AT) fields" do
-    expected = %DataElement{
-      group_number: 0x0014,
-      element_number: 0x0202,
-      vr: :AT,
-      values: [0x00020010]
-    }
-
-    sample = %{
-      options: [endianness: :little, explicit: true],
-      data: "140002024154040002001000"
-    }
-
-    assert_sample_parses_correctly(sample, expected)
-
-    sample = %{
-      options: [endianness: :big, explicit: true],
-      data: "001402024154000400020010"
-    }
-
-    assert_sample_parses_correctly(sample, expected)
-
-    sample = %{
-      options: [endianness: :little, explicit: false],
-      data: "140002020400000002001000"
-    }
-
-    assert_sample_parses_correctly(sample, expected)
-  end
-
-  test "parses code string (CS) fields" do
-    expected = %DataElement{
-      group_number: 0x0008,
-      element_number: 0x0008,
-      vr: :CS,
-      values: ["CODESTRING"]
-    }
-
-    sample = %{
-      options: [endianness: :little, explicit: true],
-      data: "0800080043530a00434f4445535452494e47"
-    }
-
-    assert_sample_parses_correctly(sample, expected)
-
-    sample = %{
-      options: [endianness: :big, explicit: true],
-      data: "000800084353000a434f4445535452494e47"
-    }
-
-    assert_sample_parses_correctly(sample, expected)
-
-    sample = %{
-      options: [endianness: :little, explicit: false],
-      data: "080008000a000000434f4445535452494e47"
-    }
-
-    assert_sample_parses_correctly(sample, expected)
+    assert actual_element == expected_element
   end
 
   test "parses date (DA) fields" do
