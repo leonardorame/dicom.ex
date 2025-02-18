@@ -536,7 +536,31 @@ defmodule Dicom.BinaryFormat do
     end
   end
 
-  def serialize_data_element(data_element, endianness: endianness, explicit: false) do
+  def serialize_lo(string, _endianness) do
+    string <> <<0>>
+  end
+
+  def serialize_cs(string, _endianness) do
+    string <> <<0>>
+  end
+
+  def serialize_sh(string, _endianness) do
+    if rem(byte_size(string), 2) == 1 do
+      string <> <<0>>
+    else
+      string
+    end
+  end
+
+  def serialize_pn(string, _endianness) do
+    if Integer.is_odd(byte_size(string)) do
+      string <> <<0>>
+    else
+      string
+    end
+  end
+
+  def serialize_data_element(data_element, endianness: endianness, explicit: explicit) do
     group = serialize_u16(data_element.group_number, endianness)
     element = serialize_u16(data_element.element_number, endianness)
 
@@ -546,11 +570,21 @@ defmodule Dicom.BinaryFormat do
         :US -> serialize_u16(data_element |> DataElement.value(), endianness)
         :UL -> serialize_u32(data_element |> DataElement.value(), endianness)
         :UI -> serialize_uid(data_element |> DataElement.value(), endianness)
+        :LO -> serialize_lo(data_element |> DataElement.value(), endianness)
+        :SH -> serialize_sh(data_element |> DataElement.value(), endianness)
+        :PN -> serialize_pn(data_element |> DataElement.value(), endianness)
+        :CS -> serialize_cs(data_element |> DataElement.value(), endianness)
       end
 
-    value_length = serialize_u32(byte_size(value), endianness)
+    case explicit do
+      false ->
+        value_length = serialize_u32(byte_size(value), endianness)
+        group <> element <> value_length <> value
 
-    group <> element <> value_length <> value
+      true ->
+        value_length = serialize_u16(byte_size(value), endianness)
+        group <> element <> to_string(data_element.vr) <> value_length <> value
+    end
   end
 
   def serialize_command_data_set(data_set) do
@@ -571,6 +605,16 @@ defmodule Dicom.BinaryFormat do
         cgroup_length_de,
         serialization_options
       ) <> serialized
+
+    serialized
+  end
+
+  def serialize(data_set, [endianness: endianess, explicit: explicit] = serialization_options) do
+    serialized =
+      for {_tag, de} <- data_set do
+        Dicom.BinaryFormat.serialize_data_element(de, serialization_options)
+      end
+      |> Enum.into(<<>>)
 
     serialized
   end

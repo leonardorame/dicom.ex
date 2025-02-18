@@ -210,10 +210,10 @@ defmodule DicomNet.Pdu do
 
   def serialize(%Pdu{
         type: :data,
-        data: %{presentation_context_id: presentation_context_id, data: data}
+        data: %{presentation_context_id: presentation_context_id, data: data, flag: flag}
       }) do
     pdv_length = byte_size(data) + 2
-    pdv = <<pdv_length::32, presentation_context_id::8, 3::8, data::binary>>
+    pdv = <<pdv_length::32, presentation_context_id::8, flag, data::binary>>
     pdu = <<4::8, 0::8, byte_size(pdv)::32, pdv::binary>>
     pdu
   end
@@ -266,13 +266,21 @@ defmodule DicomNet.Pdu do
     }
   end
 
-  def new_data_pdu(data, presentation_context_id) do
+  def new_data_pdu(data, presentation_context_id, type: type) do
+    flag = 
+      case type do
+        :data_more_fragments -> 0x00
+        :data_last_fragment -> 0x02
+        :command_last_fragment -> 0x03
+      end
+
     %Pdu{
       type: :data,
       length: 0,
       data: %{
         presentation_context_id: presentation_context_id,
-        data: data
+        data: data,
+        flag: flag
       }
     }
   end
