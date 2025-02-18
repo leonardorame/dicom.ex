@@ -17,12 +17,8 @@ defmodule DicomNet.Endpoint do
     GenServer.start_link(__MODULE__, init_args, name: __MODULE__)
   end
 
-  def register_handlers(endpoint \\ __MODULE__, handlers) do
-    GenServer.cast(endpoint, {:register_handlers, handlers})
-  end
-
   @impl true
-  def init(port: port) do
+  def init(port: port, event_handlers: event_handlers) do
     {:ok, listen_socket} =
       :gen_tcp.listen(port, [:binary, active: false, reuseaddr: true])
 
@@ -30,7 +26,7 @@ defmodule DicomNet.Endpoint do
 
     send(self(), :check_for_connection)
 
-    state = %{listen_socket: listen_socket, handlers: []}
+    state = %{listen_socket: listen_socket, handlers: event_handlers}
     {:ok, state}
   end
 
@@ -55,9 +51,4 @@ defmodule DicomNet.Endpoint do
     {:noreply, state}
   end
 
-  @impl true
-  def handle_cast({:register_handlers, handlers}, state) do
-    new_state = %{state | handlers: handlers}
-    {:noreply, new_state}
-  end
 end
