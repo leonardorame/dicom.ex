@@ -19,6 +19,7 @@ defmodule DicomNet.Association do
 
   # C-Find specific attributes
   @cfind_success 0x0000
+  @cfind_pending 0xFF00
 
   # Generic attributes
   @dataset_present 0x0001
@@ -335,7 +336,7 @@ defmodule DicomNet.Association do
     stream = cfind_Handler.(data_set)
 
     Enum.map(stream, fn response ->
-      header = cfind_response_header(command, presentation_context_id, 0xFF00)
+      header = cfind_response_header(command, presentation_context_id, @cfind_pending)
       :gen_tcp.send(socket, header)
       data = cfind_response_data(presentation_context_id, response)
       :gen_tcp.send(socket, data)
