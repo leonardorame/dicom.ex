@@ -97,7 +97,9 @@ defmodule DicomNet.Association do
        ) do
     Logger.info("Accepting association")
     association_data = accept_associate_request(associate_request)
-
+ 
+    # TODO: add a handler for checking allowed AETitles
+    # for now only FINDSCU is accepted.
     case association_data.calling_ae_title do
       "FINDSCU" ->
         new_state =
@@ -184,10 +186,10 @@ defmodule DicomNet.Association do
 
     # TODO this is not always c-store
     ds = Dicom.BinaryFormat.from_binary(data, ts_options)
-    command_Code = DataSet.value_for!(command, :CommandField)
+    command_code = DataSet.value_for!(command, :CommandField)
 
     response =
-      case command_Code do
+      case command_code do
         0x01 ->
           Logger.debug("Start handling C-Store")
 
@@ -204,7 +206,7 @@ defmodule DicomNet.Association do
               |> Pdu.new_data_pdu(presentation_context_id, type: :command_last_fragment)
               |> Pdu.serialize()
 
-            {:ok, cstore_Handler} ->
+            {:ok, cstore_handler} ->
               msg = {:dicom, %{operation: :cstore, dataset: ds}}
               send(event_listener, msg)
               response_ds = handle_cstore(command, ds)
@@ -229,7 +231,7 @@ defmodule DicomNet.Association do
               |> Pdu.new_data_pdu(presentation_context_id, type: :command_last_fragment)
               |> Pdu.serialize()
 
-            {:ok, cfind_Handler} ->
+            {:ok, cfind_handler} ->
               Logger.debug("Function getresponses is defined, returning responses to the caller.")
               msg = {:dicom, %{operation: :cfind, dataset: ds}}
               # send(event_listener, msg)
@@ -240,7 +242,7 @@ defmodule DicomNet.Association do
                   ds,
                   presentation_context_id,
                   ts_options,
-                  cfind_Handler
+                  cfind_handler
                 )
 
               Dicom.BinaryFormat.serialize_command_data_set(response_ds)
@@ -249,7 +251,7 @@ defmodule DicomNet.Association do
           end
 
         _ ->
-          IO.inspect("command field not determied")
+          Logger.warning("command field not determied")
           msg = {:dicom, %{operation: :cstore, dataset: ds}}
           send(event_listener, msg)
       end
@@ -326,14 +328,14 @@ defmodule DicomNet.Association do
     )
   end
 
-  defp handle_cfind(socket, command, data_set, presentation_context_id, ts_options, cfind_Handler) do
+  defp handle_cfind(socket, command, data_set, presentation_context_id, ts_options, cfind_handler) do
     asci_de = DataSet.fetch!(command, :AffectedSOPClassUID)
     mid_de = DataSet.fetch!(command, :MessageID)
 
     # state.getresponses is a callback function that must be defined
     # by the specific implementation. It must return a stream
     # of Dicom.DataSet.from_keyword_list.
-    stream = cfind_Handler.(data_set)
+    stream = cfind_handler.(data_set)
 
     Enum.map(stream, fn response ->
       header = cfind_response_header(command, presentation_context_id, @cfind_pending)
