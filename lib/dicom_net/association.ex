@@ -96,34 +96,17 @@ defmodule DicomNet.Association do
        ) do
     Logger.info("Accepting association")
     association_data = accept_associate_request(associate_request)
- 
-    # TODO: add a handler for checking allowed AETitles
-    # for now only FINDSCU is accepted.
-    case association_data.calling_ae_title do
-      "FINDSCU" ->
-        new_state =
-          state
-          |> Map.put(:state, :association_established)
-          |> Map.put(:association, association_data)
 
-        response =
-          Pdu.new_associate_accept_response_pdu(association_data)
-          |> Pdu.serialize()
+    new_state =
+      state
+      |> Map.put(:state, :association_established)
+      |> Map.put(:association, association_data)
 
-        {new_state, response}
+    response =
+      Pdu.new_associate_accept_response_pdu(association_data)
+      |> Pdu.serialize()
 
-      _ ->
-        new_state =
-          state
-          |> Map.put(:state, :association_release_request)
-          |> Map.put(:association, association_data)
-
-        response =
-          Pdu.new_association_release_response_pdu()
-          |> Pdu.serialize()
-
-        {new_state, response}
-    end
+    {new_state, response}
   end
 
   defp handle_pdu(
@@ -205,8 +188,7 @@ defmodule DicomNet.Association do
               |> Pdu.serialize()
 
             {:ok, cstore_handler} ->
-              msg = {:dicom, %{operation: :cstore, dataset: ds}}
-              response_ds = handle_cstore(command, ds)
+              response_ds = handle_cstore(command, cstore_handler, ds)
 
               Dicom.BinaryFormat.serialize_command_data_set(response_ds)
               |> Pdu.new_data_pdu(presentation_context_id, type: :command_last_fragment)
@@ -231,6 +213,7 @@ defmodule DicomNet.Association do
             {:ok, cfind_handler} ->
               Logger.debug("Function getresponses is defined, returning responses to the caller.")
               msg = {:dicom, %{operation: :cfind, dataset: ds}}
+
               response_ds =
                 handle_cfind(
                   socket,
@@ -266,10 +249,13 @@ defmodule DicomNet.Association do
     IO.inspect({pdu, state}, label: "Unhandled PDU")
   end
 
-  defp handle_cstore(command, _data_set) do
+  defp handle_cstore(command, handler, dataset) do
     asci_de = DataSet.fetch!(command, :AffectedSOPClassUID)
     mid_de = DataSet.fetch!(command, :MessageID)
     asii_de = DataSet.fetch!(command, :AffectedSOPInstanceUID)
+
+    # API is a map, so we can extend it with user information, etc
+    handler.(%{dataset: dataset})
 
     response_ds =
       Dicom.DataSet.from_keyword_list(

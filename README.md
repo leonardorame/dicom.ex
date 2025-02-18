@@ -39,13 +39,10 @@ ds = Dicom.BinaryFormat.from_file!("test/test_files/test-ExplicitVRLittleEndian.
 ### Receive C-STORE requests via network
 
 ```elixir
-{:ok, endpoint_pid} = GenServer.start_link(DicomNet.Endpoint, port: 4242)
-DicomNet.Endpoint.register_listener(endpoint_pid, self())
+event_handlers = [
+  cstore: &IO.inspect(&1, label: "C-Store")
+]
+{:ok, endpoint_pid} = GenServer.start_link(DicomNet.Endpoint, port: 4242, event_handlers: event_handlers)
 
 # send data set, e.g. with DCMTK: storescu localhost 4242 dataset.dcm
-
-receive do
-  {:dicom, %{operation: :cstore, dataset: ds}} ->
-    # do something with the data set
-end
 ```

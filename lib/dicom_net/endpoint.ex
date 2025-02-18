@@ -50,5 +50,4 @@ defmodule DicomNet.Endpoint do
     send(self(), :check_for_connection)
     {:noreply, state}
   end
-
 end

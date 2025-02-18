@@ -267,7 +267,7 @@ defmodule DicomNet.Pdu do
   end
 
   def new_data_pdu(data, presentation_context_id, type: type) do
-    flag = 
+    flag =
       case type do
         :data_more_fragments -> 0x00
         :data_last_fragment -> 0x02

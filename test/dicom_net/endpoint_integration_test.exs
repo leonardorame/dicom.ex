@@ -17,15 +17,20 @@ defmodule DicomNet.EndpointIntegrationTest do
               |> Enum.filter(&String.contains?(&1, ["MR_small.dcm"]))
 
   test "handles C-STORE requests" do
-    {:ok, endpoint_pid} = GenServer.start_link(DicomNet.Endpoint, port: @port)
-    DicomNet.Endpoint.register_listener(endpoint_pid, self())
+    self_pid = self()
+
+    {:ok, endpoint_pid} =
+      GenServer.start_link(DicomNet.Endpoint,
+        port: @port,
+        event_handlers: [cstore: fn evt -> send(self_pid, {:cstore_received, evt}) end]
+      )
 
     @test_files
     |> Enum.each(fn file ->
       System.cmd("storescu", ["localhost", to_string(@port), file])
     end)
 
-    assert_receive {:dicom, %{operation: :cstore, dataset: _ds}}
+    assert_receive {:cstore_received, %{dataset: _}}
   end
 
   defp get_responses(dataset) do
