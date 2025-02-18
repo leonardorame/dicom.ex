@@ -17,10 +17,6 @@ defmodule DicomNet.Endpoint do
     GenServer.start_link(__MODULE__, init_args, name: __MODULE__)
   end
 
-  def register_listener(endpoint \\ __MODULE__, listener) when is_pid(listener) do
-    GenServer.cast(endpoint, {:register_listener, listener})
-  end
-
   def register_handlers(endpoint \\ __MODULE__, handlers) do
     GenServer.cast(endpoint, {:register_handlers, handlers})
   end
@@ -34,7 +30,7 @@ defmodule DicomNet.Endpoint do
 
     send(self(), :check_for_connection)
 
-    state = %{listen_socket: listen_socket, listeners: [], handlers: []}
+    state = %{listen_socket: listen_socket, handlers: []}
     {:ok, state}
   end
 
@@ -45,7 +41,6 @@ defmodule DicomNet.Endpoint do
         {:ok, assoc_pid} =
           DicomNet.Association.start(%{
             socket: client_socket,
-            event_listener: self(),
             handlers: state.handlers
           })
 
@@ -58,21 +53,6 @@ defmodule DicomNet.Endpoint do
     # loop
     send(self(), :check_for_connection)
     {:noreply, state}
-  end
-
-  @impl true
-  def handle_info({:dicom, dicom_op}, %{listeners: listeners} = state) do
-    for listener <- listeners do
-      send(listener, {:dicom, dicom_op})
-    end
-
-    {:noreply, state}
-  end
-
-  @impl true
-  def handle_cast({:register_listener, listener}, %{listeners: listeners} = state) do
-    new_state = %{state | listeners: [listener | listeners]}
-    {:noreply, new_state}
   end
 
   @impl true

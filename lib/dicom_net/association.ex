@@ -31,11 +31,10 @@ defmodule DicomNet.Association do
   end
 
   @impl true
-  def init(%{socket: socket, event_listener: event_listener, handlers: handlers}) do
+  def init(%{socket: socket, handlers: handlers}) do
     # TODO move into function
     initial_state = %{
       handlers: handlers,
-      event_listener: event_listener,
       socket: socket,
       state: :waiting_for_association,
       buffer: <<>>,
@@ -168,7 +167,6 @@ defmodule DicomNet.Association do
            }
          },
          %{
-           event_listener: event_listener,
            state: :receiving_data,
            received_data: received_data,
            association: %{presentation_contexts: presentation_contexts},
@@ -208,7 +206,6 @@ defmodule DicomNet.Association do
 
             {:ok, cstore_handler} ->
               msg = {:dicom, %{operation: :cstore, dataset: ds}}
-              send(event_listener, msg)
               response_ds = handle_cstore(command, ds)
 
               Dicom.BinaryFormat.serialize_command_data_set(response_ds)
@@ -234,7 +231,6 @@ defmodule DicomNet.Association do
             {:ok, cfind_handler} ->
               Logger.debug("Function getresponses is defined, returning responses to the caller.")
               msg = {:dicom, %{operation: :cfind, dataset: ds}}
-              # send(event_listener, msg)
               response_ds =
                 handle_cfind(
                   socket,
@@ -253,7 +249,6 @@ defmodule DicomNet.Association do
         _ ->
           Logger.warning("command field not determied")
           msg = {:dicom, %{operation: :cstore, dataset: ds}}
-          send(event_listener, msg)
       end
 
     new_state = %{state | state: :association_established, buffer: <<>>, received_data: <<>>}
