@@ -553,7 +553,7 @@ defmodule Dicom.BinaryFormat do
   end
 
   def serialize_pn(string, _endianness) do
-    if rem(byte_size(string), 2) == 1 do
+    if Integer.is_odd(byte_size(string)) do
       string <> <<0>>
     else
       string
@@ -564,7 +564,6 @@ defmodule Dicom.BinaryFormat do
     group = serialize_u16(data_element.group_number, endianness)
     element = serialize_u16(data_element.element_number, endianness)
 
-
     # TODO cannot handle VM > 1
     value =
       case data_element.vr do
@@ -573,7 +572,7 @@ defmodule Dicom.BinaryFormat do
         :UI -> serialize_uid(data_element |> DataElement.value(), endianness)
         :LO -> serialize_lo(data_element |> DataElement.value(), endianness)
         :SH -> serialize_sh(data_element |> DataElement.value(), endianness)
-        :PN -> serialize_pn(data_element |> DataElement.value(), endianness) 
+        :PN -> serialize_pn(data_element |> DataElement.value(), endianness)
         :CS -> serialize_cs(data_element |> DataElement.value(), endianness)
       end
 
@@ -583,7 +582,7 @@ defmodule Dicom.BinaryFormat do
         group <> element <> value_length <> value
 
       true ->
-        value_length = serialize_u16(byte_size(value), endianness) 
+        value_length = serialize_u16(byte_size(value), endianness)
         group <> element <> to_string(data_element.vr) <> value_length <> value
     end
   end
@@ -619,6 +618,4 @@ defmodule Dicom.BinaryFormat do
 
     serialized
   end
-
-
 end

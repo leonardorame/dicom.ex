@@ -17,15 +17,23 @@ defmodule DicomNet.Association do
   alias Dicom.DataElement
   alias DicomNet.Pdu
 
+  # C-Find specific attributes
+  @cfind_success 0x0000
+
+  # Generic attributes
+  @dataset_present 0x0001
+  @no_dataset_present 0x0101
+  @unable_to_process 0xC001
+
   def start(init_args) do
     GenServer.start(__MODULE__, init_args)
   end
 
   @impl true
-  def init(%{socket: socket, event_listener: event_listener, getresponses: getresponses}) do
+  def init(%{socket: socket, event_listener: event_listener, handlers: handlers}) do
     # TODO move into function
     initial_state = %{
-      getresponses: getresponses,
+      handlers: handlers,
       event_listener: event_listener,
       socket: socket,
       state: :waiting_for_association,
@@ -89,17 +97,31 @@ defmodule DicomNet.Association do
     Logger.info("Accepting association")
     association_data = accept_associate_request(associate_request)
 
-    new_state =
-      state
-      |> Map.put(:state, :association_established)
-      |> Map.put(:association, association_data)
+    case association_data.calling_ae_title do
+      "FINDSCU" ->
+        new_state =
+          state
+          |> Map.put(:state, :association_established)
+          |> Map.put(:association, association_data)
 
-    response =
-      Pdu.new_associate_accept_response_pdu(association_data)
-      |> Pdu.serialize()
+        response =
+          Pdu.new_associate_accept_response_pdu(association_data)
+          |> Pdu.serialize()
 
+        {new_state, response}
 
-    {new_state, response}
+      _ ->
+        new_state =
+          state
+          |> Map.put(:state, :association_release_request)
+          |> Map.put(:association, association_data)
+
+        response =
+          Pdu.new_association_release_response_pdu()
+          |> Pdu.serialize()
+
+        {new_state, response}
+    end
   end
 
   defp handle_pdu(
@@ -160,44 +182,75 @@ defmodule DicomNet.Association do
     %{name: _ts_name, options: ts_options} = Dicom.UidRegistry.get_transfer_syntax(ts_uid)
 
     # TODO this is not always c-store
+    ds = Dicom.BinaryFormat.from_binary(data, ts_options)
+    command_Code = DataSet.value_for!(command, :CommandField)
 
-    ds = Dicom.BinaryFormat.from_binary(data, ts_options) 
-    commandField = DataSet.fetch!(command, :CommandField)
+    response =
+      case command_Code do
+        0x01 ->
+          Logger.debug("Start handling C-Store")
 
-    response = case commandField.values do
-        [0x01] -> Logger.debug("Start handling C-Store")
-            msg = {:dicom, %{operation: :cstore, dataset: ds}}
-            send(event_listener, msg)
-            response_ds = handle_cstore(command, ds)
-            Dicom.BinaryFormat.serialize_command_data_set(response_ds)
-              |> Pdu.new_data_pdu(presentation_context_id)
+          case Keyword.fetch(state.handlers, :cstore) do
+            :error ->
+              Logger.debug("No C-Store function defined. Returning Failed: Unable to process.")
+              # Returns Failed Unable to Process when no C-Store handler function is defined.
+              asci_de = DataSet.fetch!(command, :AffectedSOPClassUID)
+              mid_de = DataSet.fetch!(command, :MessageID)
+              # TODO: replace cfind_response_tail with a proper C-Store response.
+              response_ds = cfind_response_tail(asci_de, mid_de, @unable_to_process)
+
+              Dicom.BinaryFormat.serialize_command_data_set(response_ds)
+              |> Pdu.new_data_pdu(presentation_context_id, type: :command_last_fragment)
               |> Pdu.serialize()
 
-        [0x20] -> Logger.debug("Start handling C-Find")
-            case state.getresponses do
-              nil -> 
-                  Logger.debug("No function getresponses defined. Returning Failed: Unable to process.")
-                  # Returns Failed Unable to Process when getresponses is not defined.
-                  asci_de = DataSet.fetch!(command, :AffectedSOPClassUID)
-                  mid_de = DataSet.fetch!(command, :MessageID)
-                  response_ds = cfind_response_tail(asci_de, mid_de, 0xC001)
-                  Dicom.BinaryFormat.serialize_command_data_set(response_ds)
-                    |> Pdu.new_data_pdu(presentation_context_id)
-                    |> Pdu.serialize()
-              _ -> 
-                  Logger.debug("Function getresponses is defined, returning responses to the caller.")
-                  msg = {:dicom, %{operation: :cfind, dataset: ds}}
-                  #send(event_listener, msg)
-                  response_ds = handle_cfind(socket, command, ds, presentation_context_id, ts_options, state)
-                  Dicom.BinaryFormat.serialize_command_data_set(response_ds)
-                    |> Pdu.new_data_pdu(presentation_context_id)
-                    |> Pdu.serialize()
-            end
-            
+            {:ok, cstore_Handler} ->
+              msg = {:dicom, %{operation: :cstore, dataset: ds}}
+              send(event_listener, msg)
+              response_ds = handle_cstore(command, ds)
 
-        _ -> IO.inspect("command field not determied")
-            msg = {:dicom, %{operation: :cstore, dataset: ds}}
-            send(event_listener, msg)
+              Dicom.BinaryFormat.serialize_command_data_set(response_ds)
+              |> Pdu.new_data_pdu(presentation_context_id, type: :command_last_fragment)
+              |> Pdu.serialize()
+          end
+
+        0x20 ->
+          Logger.debug("Start handling C-Find")
+
+          case Keyword.fetch(state.handlers, :cfind) do
+            :error ->
+              Logger.debug("No C-Find handler defined. Returning Failed: Unable to process.")
+              # Returns Failed Unable to Process when no C-Findhandler function is defined.
+              asci_de = DataSet.fetch!(command, :AffectedSOPClassUID)
+              mid_de = DataSet.fetch!(command, :MessageID)
+              response_ds = cfind_response_tail(asci_de, mid_de, @unable_to_process)
+
+              Dicom.BinaryFormat.serialize_command_data_set(response_ds)
+              |> Pdu.new_data_pdu(presentation_context_id, type: :command_last_fragment)
+              |> Pdu.serialize()
+
+            {:ok, cfind_Handler} ->
+              Logger.debug("Function getresponses is defined, returning responses to the caller.")
+              msg = {:dicom, %{operation: :cfind, dataset: ds}}
+              # send(event_listener, msg)
+              response_ds =
+                handle_cfind(
+                  socket,
+                  command,
+                  ds,
+                  presentation_context_id,
+                  ts_options,
+                  cfind_Handler
+                )
+
+              Dicom.BinaryFormat.serialize_command_data_set(response_ds)
+              |> Pdu.new_data_pdu(presentation_context_id, type: :command_last_fragment)
+              |> Pdu.serialize()
+          end
+
+        _ ->
+          IO.inspect("command field not determied")
+          msg = {:dicom, %{operation: :cstore, dataset: ds}}
+          send(event_listener, msg)
       end
 
     new_state = %{state | state: :association_established, buffer: <<>>, received_data: <<>>}
@@ -225,7 +278,7 @@ defmodule DicomNet.Association do
         AffectedSOPClassUID: DataElement.value(asci_de),
         CommandField: 0x8001,
         MessageIDBeingRespondedTo: DataElement.value(mid_de),
-        CommandDataSetType: 0x0101,
+        CommandDataSetType: @no_dataset_present,
         Status: 0,
         AffectedSOPInstanceUID: DataElement.value(asii_de)
       )
@@ -242,53 +295,57 @@ defmodule DicomNet.Association do
         AffectedSOPClassUID: DataElement.value(asci_de),
         CommandField: 0x8020,
         MessageIDBeingRespondedTo: DataElement.value(mid_de),
-        CommandDataSetType: 0x0001, # This field shall be set to the value of 0101H (Null) if no Data Set is present; any other value indicates a Data Set is included in the Message.
-        Status: status # 0x0000 Success, 0xff00 Pending
+        # This field shall be set to the value of 0101H (Null) if no Data Set is present; any other value indicates a Data Set is included in the Message.
+        CommandDataSetType: @dataset_present,
+        # 0x0000 Success, 0xff00 Pending
+        Status: status
       )
 
     Dicom.BinaryFormat.serialize_command_data_set(response)
-      |> Pdu.new_data_pdu(presentation_context_id) 
-      |> Pdu.serialize()
+    |> Pdu.new_data_pdu(presentation_context_id, type: :command_last_fragment)
+    |> Pdu.serialize()
   end
 
   defp cfind_response_data(presentation_context_id, response) do
-    Dicom.BinaryFormat.serialize(response, [endianness: :little, explicit: true])
-      |> Pdu.new_data_pdu(presentation_context_id, 0x02)
-      |> Pdu.serialize()
+    # TODO: options are hardcoded and need to be obtained from PC
+    Dicom.BinaryFormat.serialize(response, endianness: :little, explicit: true)
+    |> Pdu.new_data_pdu(presentation_context_id, type: :data_last_fragment)
+    |> Pdu.serialize()
   end
 
   defp cfind_response_tail(affectedsopclassuid, messageidbeingrespondedto, status) do
-      Dicom.DataSet.from_keyword_list(
-        AffectedSOPClassUID: DataElement.value(affectedsopclassuid),
-        CommandField: 0x8020,
-        MessageIDBeingRespondedTo: DataElement.value(messageidbeingrespondedto),
-        CommandDataSetType: 0x0101, # This field shall be set to the value of 0101H (Null) if no Data Set is present; any other value indicates a Data Set is included in the Message.
-        Status: status  # 0xff0 Success, 0xff00 Pending
-      )
+    Dicom.DataSet.from_keyword_list(
+      AffectedSOPClassUID: DataElement.value(affectedsopclassuid),
+      CommandField: 0x8020,
+      MessageIDBeingRespondedTo: DataElement.value(messageidbeingrespondedto),
+      # This field shall be set to the value of 0101H (Null) if no Data Set is present; any other value indicates a Data Set is included in the Message.
+      CommandDataSetType: @no_dataset_present,
+      # 0xff0 Success, 0xff00 Pending
+      Status: status
+    )
   end
 
-  defp handle_cfind(socket, command, data_set, presentation_context_id, ts_options, state) do
+  defp handle_cfind(socket, command, data_set, presentation_context_id, ts_options, cfind_Handler) do
     asci_de = DataSet.fetch!(command, :AffectedSOPClassUID)
     mid_de = DataSet.fetch!(command, :MessageID)
 
     # state.getresponses is a callback function that must be defined
     # by the specific implementation. It must return a stream
     # of Dicom.DataSet.from_keyword_list.
-    stream = state.getresponses.(data_set)
+    stream = cfind_Handler.(data_set)
+
     Enum.map(stream, fn response ->
-        headerbuffer = cfind_response_header(command, presentation_context_id, 0xff00)
-        :gen_tcp.send(socket, headerbuffer)
-        databuffer = cfind_response_data(presentation_context_id, response)
-        :gen_tcp.send(socket, databuffer)
+      header = cfind_response_header(command, presentation_context_id, 0xFF00)
+      :gen_tcp.send(socket, header)
+      data = cfind_response_data(presentation_context_id, response)
+      :gen_tcp.send(socket, data)
     end)
 
-    response_tail = cfind_response_tail(asci_de, mid_de, 0x0000)
+    response_tail = cfind_response_tail(asci_de, mid_de, @cfind_success)
   end
 
   defp build_cfind_identifier() do
-    identifier = Dicom.DataSet.from_keyword_list(
-        AccessionNumber: "hello"
-      )
+    identifier = Dicom.DataSet.from_keyword_list(AccessionNumber: "hello")
 
     identifier
   end
