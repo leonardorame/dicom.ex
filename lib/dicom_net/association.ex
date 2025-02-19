@@ -101,14 +101,14 @@ defmodule DicomNet.Association do
     {new_state, response}
   end
 
-  defp reject_association(state, association_data) do
+  defp reject_association(state, association_data, source, reason) do
     new_state =
       state
       |> Map.put(:state, :association_release_request)
       |> Map.put(:association, association_data)
 
     response =
-      Pdu.new_association_reject_response_pdu()
+      Pdu.new_association_reject_response_pdu(source, reason)
       |> Pdu.serialize()
 
     {new_state, response}
@@ -144,10 +144,10 @@ defmodule DicomNet.Association do
               association_data = validate_associate_request(associate_request, :accept)
               accept_association(state, association_data)
 
-            :reject ->
+            {:reject, source, reason} ->
               Logger.debug("Association rejected by handler.")
               association_data = validate_associate_request(associate_request, :reject)
-              reject_association(state, association_data)
+              reject_association(state, association_data, source, reason)
           end
       end
 
