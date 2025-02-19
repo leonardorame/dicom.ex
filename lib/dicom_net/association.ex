@@ -87,16 +87,18 @@ defmodule DicomNet.Association do
     %{associate_request | presentation_contexts: accepted_presentation_contexts}
   end
 
-  defp handle_pdu(
-         %Pdu{
-           type: :associate_request,
-           data: associate_request
-         },
-         %{socket: _socket, state: :waiting_for_association} = state
+  defp reject_associate_request(
+         %{presentation_contexts: presentation_contexts} = associate_request
        ) do
-    Logger.info("Accepting association")
-    association_data = accept_associate_request(associate_request)
+    accepted_presentation_contexts =
+      presentation_contexts
+      |> Enum.map(fn {id, pc} -> {id, Map.put(pc, :result, :reject)} end)
+      |> Enum.into(%{})
 
+    %{associate_request | presentation_contexts: accepted_presentation_contexts}
+  end
+
+  defp accept_association(state, association_data) do
     new_state =
       state
       |> Map.put(:state, :association_established)
@@ -105,6 +107,59 @@ defmodule DicomNet.Association do
     response =
       Pdu.new_associate_accept_response_pdu(association_data)
       |> Pdu.serialize()
+
+    {new_state, response}
+  end
+
+  defp reject_association(state, association_data) do
+    new_state =
+      state
+      |> Map.put(:state, :association_release_request)
+      |> Map.put(:association, association_data)
+
+    response =
+      Pdu.new_association_release_response_pdu()
+      |> Pdu.serialize()
+
+    {new_state, response}
+  end
+
+  defp handle_pdu(
+         %Pdu{
+           type: :associate_request,
+           data: associate_request
+         },
+         %{socket: _socket, state: :waiting_for_association} = state
+       ) do
+    Logger.info("Accepting association")
+
+    # If the :association handler is defined 
+    # the acceptance/rejection can be handled by
+    # the host application.
+    {new_state, response} = 
+        case Keyword.fetch(state.handlers, :association) do
+          :error ->
+            # If no handler is defined simply allow association.
+            Logger.debug("No association hanndler is defined. Accept association.")
+            association_data = accept_associate_request(associate_request)
+            accept_association(state, association_data)
+
+          {:ok, association_handler} ->
+            # If a handler is defined it must return
+            # :accept or :reject
+            Logger.debug("Association hanndler is defined. Let's pass association_data to it.")
+            case association_handler.(associate_request) do
+              :accept -> 
+                Logger.debug("Association accepted by handler.")
+                association_data = accept_associate_request(associate_request)
+                accept_association(state, association_data)
+
+              :reject ->
+                Logger.debug("Association rejected by handler.")
+                association_data = reject_associate_request(associate_request)
+                reject_association(state, association_data)
+            end
+        end
 
     {new_state, response}
   end
