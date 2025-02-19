@@ -136,30 +136,31 @@ defmodule DicomNet.Association do
     # If the :association handler is defined 
     # the acceptance/rejection can be handled by
     # the host application.
-    {new_state, response} = 
-        case Keyword.fetch(state.handlers, :association) do
-          :error ->
-            # If no handler is defined simply allow association.
-            Logger.debug("No association hanndler is defined. Accept association.")
-            association_data = accept_associate_request(associate_request)
-            accept_association(state, association_data)
+    {new_state, response} =
+      case Keyword.fetch(state.handlers, :association) do
+        :error ->
+          # If no handler is defined simply allow association.
+          Logger.debug("No association hanndler is defined. Accept association.")
+          association_data = accept_associate_request(associate_request)
+          accept_association(state, association_data)
 
-          {:ok, association_handler} ->
-            # If a handler is defined it must return
-            # :accept or :reject
-            Logger.debug("Association hanndler is defined. Let's pass association_data to it.")
-            case association_handler.(associate_request) do
-              :accept -> 
-                Logger.debug("Association accepted by handler.")
-                association_data = accept_associate_request(associate_request)
-                accept_association(state, association_data)
+        {:ok, association_handler} ->
+          # If a handler is defined it must return
+          # :accept or :reject
+          Logger.debug("Association hanndler is defined. Let's pass association_data to it.")
 
-              :reject ->
-                Logger.debug("Association rejected by handler.")
-                association_data = reject_associate_request(associate_request)
-                reject_association(state, association_data)
-            end
-        end
+          case association_handler.(associate_request) do
+            :accept ->
+              Logger.debug("Association accepted by handler.")
+              association_data = accept_associate_request(associate_request)
+              accept_association(state, association_data)
+
+            :reject ->
+              Logger.debug("Association rejected by handler.")
+              association_data = reject_associate_request(associate_request)
+              reject_association(state, association_data)
+          end
+      end
 
     {new_state, response}
   end
