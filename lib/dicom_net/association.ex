@@ -76,23 +76,13 @@ defmodule DicomNet.Association do
     end
   end
 
-  defp accept_associate_request(
-         %{presentation_contexts: presentation_contexts} = associate_request
+  defp validate_associate_request(
+        %{presentation_contexts: presentation_contexts} = associate_request,
+        result
        ) do
     accepted_presentation_contexts =
       presentation_contexts
-      |> Enum.map(fn {id, pc} -> {id, Map.put(pc, :result, :accept)} end)
-      |> Enum.into(%{})
-
-    %{associate_request | presentation_contexts: accepted_presentation_contexts}
-  end
-
-  defp reject_associate_request(
-         %{presentation_contexts: presentation_contexts} = associate_request
-       ) do
-    accepted_presentation_contexts =
-      presentation_contexts
-      |> Enum.map(fn {id, pc} -> {id, Map.put(pc, :result, :reject)} end)
+      |> Enum.map(fn {id, pc} -> {id, Map.put(pc, :result, result)} end)
       |> Enum.into(%{})
 
     %{associate_request | presentation_contexts: accepted_presentation_contexts}
@@ -118,7 +108,7 @@ defmodule DicomNet.Association do
       |> Map.put(:association, association_data)
 
     response =
-      Pdu.new_association_release_response_pdu()
+      Pdu.new_association_reject_response_pdu()
       |> Pdu.serialize()
 
     {new_state, response}
@@ -131,17 +121,16 @@ defmodule DicomNet.Association do
          },
          %{socket: _socket, state: :waiting_for_association} = state
        ) do
-    Logger.info("Accepting association")
 
     # If the :association handler is defined 
     # the acceptance/rejection can be handled by
     # the host application.
     {new_state, response} =
-      case Keyword.fetch(state.handlers, :association) do
+      case Keyword.fetch(state.handlers, :association_validator) do
         :error ->
           # If no handler is defined simply allow association.
-          Logger.debug("No association hanndler is defined. Accept association.")
-          association_data = accept_associate_request(associate_request)
+          Logger.debug("No association handler is defined. Accept association.")
+          association_data = validate_associate_request(associate_request, :accept)
           accept_association(state, association_data)
 
         {:ok, association_handler} ->
@@ -152,12 +141,12 @@ defmodule DicomNet.Association do
           case association_handler.(associate_request) do
             :accept ->
               Logger.debug("Association accepted by handler.")
-              association_data = accept_associate_request(associate_request)
+              association_data = validate_associate_request(associate_request, :accept)
               accept_association(state, association_data)
 
             :reject ->
               Logger.debug("Association rejected by handler.")
-              association_data = reject_associate_request(associate_request)
+              association_data = validate_associate_request(associate_request, :reject)
               reject_association(state, association_data)
           end
       end

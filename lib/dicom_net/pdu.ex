@@ -9,6 +9,7 @@ defmodule DicomNet.Pdu do
   @pdu_types %{
     1 => :associate_request,
     2 => :associate_accept,
+    3 => :association_reject_response,
     4 => :data,
     5 => :association_release_request,
     6 => :association_release_response
@@ -258,6 +259,11 @@ defmodule DicomNet.Pdu do
     data
   end
 
+  def serialize(%Pdu{type: :association_reject_response}) do
+    # TODO: for now a hardcoded Reject Permanent, Calling AETitle not recognized is returned
+    <<3::8, 0::8, 4::32, 0::8, 1::8, 1::8, 3::8>>
+  end
+
   def new_associate_accept_response_pdu(association_data) do
     %Pdu{
       type: :associate_accept_response,
@@ -288,6 +294,14 @@ defmodule DicomNet.Pdu do
   def new_association_release_response_pdu() do
     %Pdu{
       type: :association_release_response,
+      length: 0,
+      data: nil
+    }
+  end
+
+  def new_association_reject_response_pdu() do
+    %Pdu{
+      type: :association_reject_response,
       length: 0,
       data: nil
     }
