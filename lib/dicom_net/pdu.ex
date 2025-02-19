@@ -266,7 +266,6 @@ defmodule DicomNet.Pdu do
       reason: reason
     } = data
 
-    # TODO: for now a hardcoded Reject Permanent, Calling AETitle not recognized is returned
     header = <<3::8, 0::8, 4::32, 0::8, 1::8>>
     case source do
       :dicom_ul_service_user ->
