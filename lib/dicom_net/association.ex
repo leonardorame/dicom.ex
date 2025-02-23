@@ -160,32 +160,15 @@ defmodule DicomNet.Association do
            type: :data,
            data: %{
              pdv_flags: :command_last_fragment,
-             # Group 0
              data:
                <<
-                 0x00,
-                 0x00,
-                 # Element 0
-                 0x00,
-                 0x00,
-                 # Data Length 4  
-                 0x04,
-                 0x00,
-                 0x00,
-                 0x00,
+                 0x00, 0x00, # Group 0 
+                 0x00, 0x00, # Element 0   
+                 0x04, 0x00, 0x00, 0x00, # Data Length 4
                  _val::binary-size(4),
-                 # Group 0
-                 0x00,
-                 0x00,
-                 # Element 2
-                 0x02,
-                 0x00,
-                 # Data Length 18 (0x12 hex)
-                 0x12,
-                 0x00,
-                 0x00,
-                 0x00,
-                 # Value "1.2.840.10008.1.1"
+                 0x00, 0x00, # Group 0
+                 0x02, 0x00, # Element 2
+                 0x12, 0x00, 0x00, 0x00, # Data Length 18 (0x12 hex)
                  @verification_sopclassuid,
                  res::binary
                >> = data
