@@ -52,7 +52,6 @@ defmodule DicomNet.Association do
         Logger.debug("Received PDU")
         new_state = Map.put(state, :buffer, remaining_data)
         new_state = Map.put(new_state, :socket, socket)
-        IO.inspect(pdu, base: :hex)
         {new_state, response} = handle_pdu(pdu, new_state)
 
         if is_binary(response) do
@@ -167,17 +166,19 @@ defmodule DicomNet.Association do
                 0x02, 0x00, # Element 2
                 0x12, 0x00, 0x00, 0x00, # Data Length 18 (0x12 hex)
                 0x31, 0x2E, 0x32, 0x2E, 0x38, 0x34, 0x30, 0x2E, 0x31, 0x30, 0x30, 0x30, 0x38, 0x2E, 0x31, 0x2E, 0x31, # Value 1.2.840.10008.1.1
-                _res::binary>>
+                res::binary>> = data
             }},
           %{state: :association_established} = state
        ) do
     Logger.debug("Handling C-ECHO-RQ")
+    command = Dicom.BinaryFormat.from_binary(data, endianness: :little, explicit: false)
+    mid_de = DataSet.value_for!(command, :MessageID)
     # Handle C-ECHO
     response_ds =
       Dicom.DataSet.from_keyword_list(
         AffectedSOPClassUID: "1.2.840.10008.1.1",
         CommandField: 0x8030,
-        MessageIDBeingRespondedTo: 1, # DataElement.value(mid_de),
+        MessageIDBeingRespondedTo: mid_de, 
         CommandDataSetType: @no_dataset_present,
         Status: 0
       )
@@ -197,7 +198,6 @@ defmodule DicomNet.Association do
     Logger.debug("Received command")
 
     command_ds = Dicom.BinaryFormat.from_binary(data, endianness: :little, explicit: false)
-    #IO.inspect(command_ds, label: "command_ds", base: :hex)
 
     new_state =
       state
