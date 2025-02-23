@@ -79,8 +79,8 @@ defmodule DicomNet.Association do
   end
 
   defp validate_associate_request(
-        %{presentation_contexts: presentation_contexts} = associate_request,
-        result
+         %{presentation_contexts: presentation_contexts} = associate_request,
+         result
        ) do
     accepted_presentation_contexts =
       presentation_contexts
@@ -123,7 +123,6 @@ defmodule DicomNet.Association do
          },
          %{socket: _socket, state: :waiting_for_association} = state
        ) do
-
     # If the :association handler is defined 
     # the acceptance/rejection can be handled by
     # the host application.
@@ -157,20 +156,42 @@ defmodule DicomNet.Association do
   end
 
   defp handle_pdu(
-          %Pdu{type: :data, 
-            data: %{pdv_flags: :command_last_fragment, 
-              data: 
-              <<0x00, 0x00, # Group 0
-                0x00, 0x00, # Element 0
-                0x04, 0x00, 0x00, 0x00, # Data Length 4  
-                _val::binary-size(4),
-                0x00, 0x00, # Group 0
-                0x02, 0x00, # Element 2
-                0x12, 0x00, 0x00, 0x00, # Data Length 18 (0x12 hex)
-                @verification_sopclassuid, # Value "1.2.840.10008.1.1"
-                res::binary>> = data
-            }},
-          %{state: :association_established} = state
+         %Pdu{
+           type: :data,
+           data: %{
+             pdv_flags: :command_last_fragment,
+             # Group 0
+             data:
+               <<
+                 0x00,
+                 0x00,
+                 # Element 0
+                 0x00,
+                 0x00,
+                 # Data Length 4  
+                 0x04,
+                 0x00,
+                 0x00,
+                 0x00,
+                 _val::binary-size(4),
+                 # Group 0
+                 0x00,
+                 0x00,
+                 # Element 2
+                 0x02,
+                 0x00,
+                 # Data Length 18 (0x12 hex)
+                 0x12,
+                 0x00,
+                 0x00,
+                 0x00,
+                 # Value "1.2.840.10008.1.1"
+                 @verification_sopclassuid,
+                 res::binary
+               >> = data
+           }
+         },
+         %{state: :association_established} = state
        ) do
     Logger.debug("Handling C-ECHO-RQ")
     command = Dicom.BinaryFormat.from_binary(data, endianness: :little, explicit: false)
@@ -180,15 +201,15 @@ defmodule DicomNet.Association do
       Dicom.DataSet.from_keyword_list(
         AffectedSOPClassUID: @verification_sopclassuid,
         CommandField: 0x8030,
-        MessageIDBeingRespondedTo: mid_de, 
+        MessageIDBeingRespondedTo: mid_de,
         CommandDataSetType: @no_dataset_present,
         Status: 0
       )
 
-    response = 
+    response =
       Dicom.BinaryFormat.serialize_command_data_set(response_ds)
-        |> Pdu.new_data_pdu(1, type: :command_last_fragment)
-        |> Pdu.serialize()
+      |> Pdu.new_data_pdu(1, type: :command_last_fragment)
+      |> Pdu.serialize()
 
     {state, response}
   end
@@ -205,7 +226,6 @@ defmodule DicomNet.Association do
       state
       |> Map.put(:state, :receiving_data)
       |> Map.put(:command, command_ds)
-
 
     {new_state, :no_response}
   end
