@@ -165,7 +165,7 @@ defmodule DicomNet.Association do
                 0x00, 0x00, # Group 0
                 0x02, 0x00, # Element 2
                 0x12, 0x00, 0x00, 0x00, # Data Length 18 (0x12 hex)
-                0x31, 0x2E, 0x32, 0x2E, 0x38, 0x34, 0x30, 0x2E, 0x31, 0x30, 0x30, 0x30, 0x38, 0x2E, 0x31, 0x2E, 0x31, # Value 1.2.840.10008.1.1
+                "1.2.840.10008.1.1", # Value "1.2.840.10008.1.1"
                 res::binary>> = data
             }},
           %{state: :association_established} = state
