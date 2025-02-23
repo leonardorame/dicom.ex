@@ -54,6 +54,27 @@ defmodule DicomNet.Association do
         new_state = Map.put(new_state, :socket, socket)
         {new_state, response} = handle_pdu(pdu, new_state)
 
+        # When handle_pdu for the C-Echo command, the response is :no_response
+        # but has a command that we need to handle.
+        response = case (response == :no_response) and (Map.has_key?(new_state, :command)) do
+          true ->
+            # Handle C-ECHO
+            command = new_state.command
+            asci_de = DataSet.value_for!(command, :AffectedSOPClassUID)
+            if asci_de == "1.2.840.10008.1.1" do
+              response_ds = handle_cecho(command)
+              Dicom.BinaryFormat.serialize_command_data_set(response_ds)
+                |> Pdu.new_data_pdu(1, type: :command_last_fragment)
+                |> Pdu.serialize()
+            end
+
+          false ->
+            # Handle all other commands
+            response
+          end
+
+        IO.inspect(response)
+
         if is_binary(response) do
           :gen_tcp.send(socket, response)
         end
@@ -136,7 +157,7 @@ defmodule DicomNet.Association do
         {:ok, association_handler} ->
           # If a handler is defined it must return
           # :accept or :reject
-          Logger.debug("Association hanndler is defined. Let's pass association_data to it.")
+          Logger.debug("Association handler is defined. Let's pass association_data to it.")
 
           case association_handler.(associate_request) do
             :accept ->
@@ -166,6 +187,7 @@ defmodule DicomNet.Association do
       state
       |> Map.put(:state, :receiving_data)
       |> Map.put(:command, command_ds)
+
 
     {new_state, :no_response}
   end
@@ -256,7 +278,7 @@ defmodule DicomNet.Association do
               |> Pdu.serialize()
 
             {:ok, cfind_handler} ->
-              Logger.debug("Function getresponses is defined, returning responses to the caller.")
+              Logger.debug("CFind handler is defined, returning responses to the caller.")
               msg = {:dicom, %{operation: :cfind, dataset: ds}}
 
               response_ds =
@@ -273,6 +295,16 @@ defmodule DicomNet.Association do
               |> Pdu.new_data_pdu(presentation_context_id, type: :command_last_fragment)
               |> Pdu.serialize()
           end
+
+        0x30 ->
+          Logger.debug("Start handling C-Echo")
+          # C-Echo is simplier than C-Find and C-Store 
+          # it doesn't require a handler.
+
+          response_ds = handle_cecho(command)
+          Dicom.BinaryFormat.serialize_command_data_set(response_ds)
+          |> Pdu.new_data_pdu(presentation_context_id, type: :command_last_fragment)
+          |> Pdu.serialize()
 
         _ ->
           Logger.warning("command field not determied")
@@ -292,6 +324,22 @@ defmodule DicomNet.Association do
 
   defp handle_pdu(pdu, state) do
     IO.inspect({pdu, state}, label: "Unhandled PDU")
+  end
+
+  defp handle_cecho(command) do
+    asci_de = DataSet.fetch!(command, :AffectedSOPClassUID)
+    mid_de = DataSet.fetch!(command, :MessageID)
+
+    response_ds =
+      Dicom.DataSet.from_keyword_list(
+        AffectedSOPClassUID: DataElement.value(asci_de),
+        CommandField: 0x8030,
+        MessageIDBeingRespondedTo: DataElement.value(mid_de),
+        CommandDataSetType: @no_dataset_present,
+        Status: 0
+      )
+
+    response_ds
   end
 
   defp handle_cstore(command, handler, dataset) do
