@@ -52,28 +52,8 @@ defmodule DicomNet.Association do
         Logger.debug("Received PDU")
         new_state = Map.put(state, :buffer, remaining_data)
         new_state = Map.put(new_state, :socket, socket)
+        IO.inspect(pdu, base: :hex)
         {new_state, response} = handle_pdu(pdu, new_state)
-
-        # When handle_pdu for the C-Echo command, the response is :no_response
-        # but has a command that we need to handle.
-        response = case (response == :no_response) and (Map.has_key?(new_state, :command)) do
-          true ->
-            # Handle C-ECHO
-            command = new_state.command
-            asci_de = DataSet.value_for!(command, :AffectedSOPClassUID)
-            if asci_de == "1.2.840.10008.1.1" do
-              response_ds = handle_cecho(command)
-              Dicom.BinaryFormat.serialize_command_data_set(response_ds)
-                |> Pdu.new_data_pdu(1, type: :command_last_fragment)
-                |> Pdu.serialize()
-            end
-
-          false ->
-            # Handle all other commands
-            response
-          end
-
-        IO.inspect(response)
 
         if is_binary(response) do
           :gen_tcp.send(socket, response)
@@ -176,12 +156,48 @@ defmodule DicomNet.Association do
   end
 
   defp handle_pdu(
+          %Pdu{type: :data, 
+            data: %{pdv_flags: :command_last_fragment, 
+              data: 
+              <<0x00, 0x00, # Group 0
+                0x00, 0x00, # Element 0
+                0x04, 0x00, 0x00, 0x00, # Data Length 4  
+                _val::binary-size(4),
+                0x00, 0x00, # Group 0
+                0x02, 0x00, # Element 2
+                0x12, 0x00, 0x00, 0x00, # Data Length 18 (0x12 hex)
+                0x31, 0x2E, 0x32, 0x2E, 0x38, 0x34, 0x30, 0x2E, 0x31, 0x30, 0x30, 0x30, 0x38, 0x2E, 0x31, 0x2E, 0x31, # Value 1.2.840.10008.1.1
+                _res::binary>>
+            }},
+          %{state: :association_established} = state
+       ) do
+    Logger.debug("Handling C-ECHO yea!")
+    # Handle C-ECHO
+    response_ds =
+      Dicom.DataSet.from_keyword_list(
+        AffectedSOPClassUID: "1.2.840.10008.1.1",
+        CommandField: 0x8030,
+        MessageIDBeingRespondedTo: 1, # DataElement.value(mid_de),
+        CommandDataSetType: @no_dataset_present,
+        Status: 0
+      )
+
+    response = 
+      Dicom.BinaryFormat.serialize_command_data_set(response_ds)
+        |> Pdu.new_data_pdu(1, type: :command_last_fragment)
+        |> Pdu.serialize()
+
+    {state, response}
+  end
+
+  defp handle_pdu(
          %Pdu{type: :data, data: %{pdv_flags: :command_last_fragment, data: data}},
          %{state: :association_established} = state
        ) do
     Logger.debug("Received command")
 
     command_ds = Dicom.BinaryFormat.from_binary(data, endianness: :little, explicit: false)
+    #IO.inspect(command_ds, label: "command_ds", base: :hex)
 
     new_state =
       state
@@ -232,7 +248,6 @@ defmodule DicomNet.Association do
     %{uid: ts_uid} = syntaxes |> Enum.find(fn el -> Map.get(el, :syntax_type) == :transfer end)
     %{name: _ts_name, options: ts_options} = Dicom.UidRegistry.get_transfer_syntax(ts_uid)
 
-    # TODO this is not always c-store
     ds = Dicom.BinaryFormat.from_binary(data, ts_options)
     command_code = DataSet.value_for!(command, :CommandField)
 
@@ -295,16 +310,6 @@ defmodule DicomNet.Association do
               |> Pdu.new_data_pdu(presentation_context_id, type: :command_last_fragment)
               |> Pdu.serialize()
           end
-
-        0x30 ->
-          Logger.debug("Start handling C-Echo")
-          # C-Echo is simplier than C-Find and C-Store 
-          # it doesn't require a handler.
-
-          response_ds = handle_cecho(command)
-          Dicom.BinaryFormat.serialize_command_data_set(response_ds)
-          |> Pdu.new_data_pdu(presentation_context_id, type: :command_last_fragment)
-          |> Pdu.serialize()
 
         _ ->
           Logger.warning("command field not determied")
