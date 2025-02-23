@@ -333,22 +333,6 @@ defmodule DicomNet.Association do
     IO.inspect({pdu, state}, label: "Unhandled PDU")
   end
 
-  defp handle_cecho(command) do
-    asci_de = DataSet.fetch!(command, :AffectedSOPClassUID)
-    mid_de = DataSet.fetch!(command, :MessageID)
-
-    response_ds =
-      Dicom.DataSet.from_keyword_list(
-        AffectedSOPClassUID: DataElement.value(asci_de),
-        CommandField: 0x8030,
-        MessageIDBeingRespondedTo: DataElement.value(mid_de),
-        CommandDataSetType: @no_dataset_present,
-        Status: 0
-      )
-
-    response_ds
-  end
-
   defp handle_cstore(command, handler, dataset) do
     asci_de = DataSet.fetch!(command, :AffectedSOPClassUID)
     mid_de = DataSet.fetch!(command, :MessageID)
