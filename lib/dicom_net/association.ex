@@ -26,6 +26,8 @@ defmodule DicomNet.Association do
   @no_dataset_present 0x0101
   @unable_to_process 0xC001
 
+  @verification_sopclassuid "1.2.840.10008.1.1"
+
   def start(init_args) do
     GenServer.start(__MODULE__, init_args)
   end
@@ -165,7 +167,7 @@ defmodule DicomNet.Association do
                 0x00, 0x00, # Group 0
                 0x02, 0x00, # Element 2
                 0x12, 0x00, 0x00, 0x00, # Data Length 18 (0x12 hex)
-                "1.2.840.10008.1.1", # Value "1.2.840.10008.1.1"
+                @verification_sopclassuid, # Value "1.2.840.10008.1.1"
                 res::binary>> = data
             }},
           %{state: :association_established} = state
@@ -176,7 +178,7 @@ defmodule DicomNet.Association do
     # Handle C-ECHO
     response_ds =
       Dicom.DataSet.from_keyword_list(
-        AffectedSOPClassUID: "1.2.840.10008.1.1",
+        AffectedSOPClassUID: @verification_sopclassuid,
         CommandField: 0x8030,
         MessageIDBeingRespondedTo: mid_de, 
         CommandDataSetType: @no_dataset_present,
