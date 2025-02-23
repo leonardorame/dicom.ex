@@ -171,7 +171,7 @@ defmodule DicomNet.Association do
             }},
           %{state: :association_established} = state
        ) do
-    Logger.debug("Handling C-ECHO yea!")
+    Logger.debug("Handling C-ECHO-RQ")
     # Handle C-ECHO
     response_ds =
       Dicom.DataSet.from_keyword_list(
