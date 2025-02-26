@@ -160,57 +160,45 @@ defmodule DicomNet.Association do
            type: :data,
            data: %{
              pdv_flags: :command_last_fragment,
-             data:
-               <<
-                 0x00, 0x00, # Group 0 
-                 0x00, 0x00, # Element 0   
-                 0x04, 0x00, 0x00, 0x00, # Data Length 4
-                 _val::binary-size(4),
-                 0x00, 0x00, # Group 0
-                 0x02, 0x00, # Element 2
-                 0x12, 0x00, 0x00, 0x00, # Data Length 18 (0x12 hex)
-                 @verification_sopclassuid,
-                 res::binary
-               >> = data
+             pdv_transfer_ctx_id: presentation_context_id,
+             data: data
            }
          },
-         %{state: :association_established} = state
-       ) do
-    Logger.debug("Handling C-ECHO-RQ")
-    command = Dicom.BinaryFormat.from_binary(data, endianness: :little, explicit: false)
-    mid_de = DataSet.value_for!(command, :MessageID)
-    # Handle C-ECHO
-    response_ds =
-      Dicom.DataSet.from_keyword_list(
-        AffectedSOPClassUID: @verification_sopclassuid,
-        CommandField: 0x8030,
-        MessageIDBeingRespondedTo: mid_de,
-        CommandDataSetType: @no_dataset_present,
-        Status: 0
-      )
-
-    response =
-      Dicom.BinaryFormat.serialize_command_data_set(response_ds)
-      |> Pdu.new_data_pdu(1, type: :command_last_fragment)
-      |> Pdu.serialize()
-
-    {state, response}
-  end
-
-  defp handle_pdu(
-         %Pdu{type: :data, data: %{pdv_flags: :command_last_fragment, data: data}},
          %{state: :association_established} = state
        ) do
     Logger.debug("Received command")
 
     command_ds = Dicom.BinaryFormat.from_binary(data, endianness: :little, explicit: false)
+    asci_de = DataSet.value_for!(command_ds, :AffectedSOPClassUID)
+    mid_de = DataSet.value_for!(command_ds, :MessageID)
 
-    new_state =
-      state
-      |> Map.put(:state, :receiving_data)
-      |> Map.put(:command, command_ds)
+    case asci_de do
+      @verification_sopclassuid ->
+        Logger.debug("Command is C-ECHO")
+        response_ds =
+          Dicom.DataSet.from_keyword_list(
+            AffectedSOPClassUID: @verification_sopclassuid,
+            CommandField: 0x8030,
+            MessageIDBeingRespondedTo: mid_de,
+            CommandDataSetType: @no_dataset_present,
+            Status: 0
+          )
 
-    {new_state, :no_response}
+        response =
+          Dicom.BinaryFormat.serialize_command_data_set(response_ds)
+          |> Pdu.new_data_pdu(presentation_context_id, type: :command_last_fragment)
+          |> Pdu.serialize()
+
+        {state, response}
+
+      _ ->
+        new_state =
+          state
+          |> Map.put(:state, :receiving_data)
+          |> Map.put(:command, command_ds)
+
+        {new_state, :no_response}
+    end
   end
 
   defp handle_pdu(
