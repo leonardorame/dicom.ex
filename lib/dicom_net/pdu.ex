@@ -280,6 +280,7 @@ defmodule DicomNet.Pdu do
           :calling_ae_title_not_recognized ->
             header <> <<1::8, 3::8>>
 
+
           :called_ae_title_not_recognized ->
             header <> <<1::8, 7::8>>
         end

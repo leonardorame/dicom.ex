@@ -123,6 +123,7 @@ defmodule DicomNet.Association do
          },
          %{socket: _socket, state: :waiting_for_association} = state
        ) do
+
     # If the :association handler is defined 
     # the acceptance/rejection can be handled by
     # the host application.
@@ -137,6 +138,7 @@ defmodule DicomNet.Association do
         {:ok, association_handler} ->
           # If a handler is defined it must return
           # :accept or :reject
+
           Logger.debug("Association handler is defined. Let's pass association_data to it.")
 
           case association_handler.(associate_request) do
