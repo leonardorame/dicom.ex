@@ -267,19 +267,15 @@ defmodule DicomNet.Pdu do
     } = data
 
     header = <<3::8, 0::8, 4::32, 0::8, 1::8>>
-
     case source do
       :dicom_ul_service_user ->
         case reason do
           :no_reason_given ->
             header <> <<1::8, 1::8>>
-
           :application_context_name_not_supported ->
             header <> <<1::8, 2::8>>
-
           :calling_ae_title_not_recognized ->
             header <> <<1::8, 3::8>>
-
           :called_ae_title_not_recognized ->
             header <> <<1::8, 7::8>>
         end
@@ -288,7 +284,6 @@ defmodule DicomNet.Pdu do
         case reason do
           :no_reason_given ->
             header <> <<1::8, 1::8>>
-
           :protocol_version_not_supported ->
             header <> <<1::8, 2::8>>
         end
@@ -297,7 +292,6 @@ defmodule DicomNet.Pdu do
         case reason do
           :no_reason_given ->
             header <> <<1::8, 1::8>>
-
           :protocol_version_not_supported ->
             header <> <<1::8, 2::8>>
         end
