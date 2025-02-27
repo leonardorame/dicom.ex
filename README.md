@@ -179,13 +179,78 @@ defmodule CFindSCP do
 end
 ```
 
-### Receive C-STORE requests via network
+### C-STORE SCP
+
+This last example includes all the handlers available at this moment, `association_validator`, `cfind` and `cstore`.  
 
 ```elixir
-event_handlers = [
-  cstore: &IO.inspect(&1, label: "C-Store")
-]
-{:ok, endpoint_pid} = GenServer.start_link(DicomNet.Endpoint, port: 4242, event_handlers: event_handlers)
+defmodule SCP do
+  use Application
 
-# send data set, e.g. with DCMTK: storescu localhost 4242 dataset.dcm
+  def start(_type, _args) do
+    {:ok, endpoint_pid} = GenServer.start_link(
+      DicomNet.Endpoint, 
+      port: 4242,
+      event_handlers: [
+        cfind: &get_responses/1,
+        cstore: &store_image/1,
+        association_validator: &association_handler/1,
+      ]
+    )
+
+    loop()
+    {:ok, endpoint_pid}
+  end
+
+  # Whithout this the server won't keep running
+  defp loop() do
+    loop()
+  end
+
+  defp association_handler(association_data) do
+    case association_data.called_ae_title do
+      "TEST" ->
+        :accept
+      _ ->
+        {:reject, :dicom_ul_service_user, :called_ae_title_not_recognized}
+    end
+  end
+
+  defp get_responses(dataset) do
+    # Rename tags with atoms
+    fields = Enum.map(dataset, fn {k, v} ->
+          group = v.group_number
+          element = v.element_number
+          values = v.values
+          case {group, element} do
+              {0x0008, 0x0050} -> {:AccessionNumber, values}
+              {0x0010, 0x0010} -> {:PatientName, values}
+              {0x0010, 0x0020} -> {:PatientID, values}
+            _ -> {:Ignore, nil}
+          end
+        end
+    ) 
+
+    # sample study list
+    studies = [
+      ["PatientName": "Carmack^John", PatientID: "1", AccessionNumber: "A001"],
+      ["PatientName": "Kernighan^Brian", PatientID: "2", AccessionNumber: "A002"],
+      ["PatientName": "Torvalds^Linus", PatientID: "3", AccessionNumber: "A003"],
+      ["PatientName": "Van Rossum^Guido", PatientID: "4", AccessionNumber: "A004"],
+      ["PatientName": "Valim^José", PatientID: "5", AccessionNumber: "A005"]
+    ]
+
+    # Return the list excluding those fields not present in fields list.
+    Stream.map(studies, fn study ->
+      Keyword.take(study, Keyword.keys(fields)) 
+      |>Dicom.DataSet.from_keyword_list()
+    end) 
+  end
+
+  defp store_image(data) do
+    # just print the incoming dataset
+    IO.inspect(data, label: "C-STORE")
+  end
+
+end
 ```
