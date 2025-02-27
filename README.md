@@ -66,7 +66,7 @@ The following examples show how to create Dicom SCP services and their handlers.
 This example allows incoming requests pointing to `TEST` AETitle, all other AETitles are rejected.  
 
 ```elixir
-defmodule Worklist do
+defmodule AssociationExample do
   use Application
 
   def start(_type, _args) do
