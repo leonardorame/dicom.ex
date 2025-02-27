@@ -65,13 +65,13 @@ The following examples show how to create Dicom SCP services and their handlers.
 
 This example allows incoming requests pointing to `TEST` AETitle, all other AETitles are rejected.  
 
-To test an _accepting association_ you could run echoscu (from dcmtk) this way:  
+To test an _accepting association_ you could run echoscu (from [dcmtk](https://dicom.offis.de/dcmtk.php.en)) this way:  
 
 ```
 echoscu -d -aec TEST 127.0.0.1 4242
 ```
 
-To test an _rejecting association_ you could run echoscu (from dcmtk) this way:  
+To test an _rejecting association_:  
 
 ```
 echoscu -d -aec OTHERAET 127.0.0.1 4242
