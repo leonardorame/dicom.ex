@@ -21,13 +21,13 @@ care of the response to the SCU, based on the data received.
 
 At the moment of writing this readme, there are these handlers:  
 
-* association_validator  
+*association_validator*  
 > Allows/Rejects incomming connections.   
 
-* cfind  
+*cfind*  
 > Receives incoming C-FIND requests and returns a Stream containing matches.  
 
-* cstore  
+*cstore*  
 > Receives incoming C-STORE requests. The handler have access to the incoming dicom file and must take care of saving to filesystem, database, etc. 
 
 
