@@ -33,6 +33,8 @@ At the moment of writing this readme, there are these handlers:
 
 ## Examples
 
+## Dicom parsing and writing
+
 ### Create and access DICOM data set
 
 ```elixir
@@ -51,6 +53,47 @@ assert Dicom.DataSet.value_for!(ds, :ImageType, 2) == "Test3"
 
 ```elixir
 ds = Dicom.BinaryFormat.from_file!("test/test_files/test-ExplicitVRLittleEndian.dcm")
+```
+
+## Dicom SCP
+
+The following examples show how to create Dicom SCP services and their handlers.  
+
+### Association Validation
+
+This example allows incoming requests pointing to `TEST` AETitle, all other AETitles are rejected.  
+
+```elixir
+defmodule Worklist do
+  use Application
+
+  def start(_type, _args) do
+    {:ok, endpoint_pid} = GenServer.start_link(
+      DicomNet.Endpoint, 
+      port: 4242,
+      event_handlers: [
+        association_validator: &association_handler/1,
+      ]
+    )
+
+    loop()
+    {:ok, endpoint_pid}
+  end
+
+  # Whithout this the server won't keep running
+  defp loop() do
+    loop()
+  end
+
+  defp association_handler(association_data) do
+    case association_data.called_ae_title do
+      "TEST" ->
+        :accept
+      _ ->
+        {:reject, :dicom_ul_service_user, :called_ae_title_not_recognized}
+    end
+  end
+end
 ```
 
 ### Receive C-STORE requests via network
