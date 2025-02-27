@@ -12,7 +12,24 @@ in production and absolutely not in clinical contexts.
 * General methods to work with DICOM data sets and elements
 * Read data sets from files encode according to [DICOM Part 3.10](https://dicom.nema.org/medical/dicom/current/output/chtml/part10/chapter_7.html)
 * Supports VRs and tag dictionary as of DICOM version 2024d
-* Receive C-STORE network requests ([DICOM Part 3.7](https://dicom.nema.org/medical/dicom/current/output/chtml/part07/PS3.7.html))
+* Receive C-ECHO, C-FIND and C-STORE network requests ([DICOM Part 3.7](https://dicom.nema.org/medical/dicom/current/output/chtml/part07/PS3.7.html))
+
+## SCP Handlers
+
+At the moment of configuring SCP services, the final developer must define functions called `event_handlers` which will take
+care of the response to the SCU, based on the data received.  
+
+At the moment of writing this readme, there are these handlers:  
+
+* association_validator  
+> Allows/Rejects incomming connections.   
+
+* cfind  
+> Receives incoming C-FIND requests and returns a Stream containing matches.  
+
+* cstore  
+> Receives incoming C-STORE requests. The handler have access to the incoming dicom file and must take care of saving to filesystem, database, etc. 
+
 
 ## Examples
 
