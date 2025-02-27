@@ -35,6 +35,8 @@ At the moment of writing this readme, there are these handlers:
 
 ## Dicom parsing and writing
 
+The following examples shows how to parse and access/write data from/to dicom files.  
+
 ### Create and access DICOM data set
 
 ```elixir
