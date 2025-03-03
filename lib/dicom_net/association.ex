@@ -171,11 +171,10 @@ defmodule DicomNet.Association do
     Logger.debug("Received command")
 
     command_ds = Dicom.BinaryFormat.from_binary(data, endianness: :little, explicit: false)
-    asci_de = DataSet.value_for!(command_ds, :AffectedSOPClassUID)
-    mid_de = DataSet.value_for!(command_ds, :MessageID)
+    command_field = DataSet.value_for!(command_ds, :CommandField)
 
-    case asci_de do
-      @verification_sopclassuid ->
+    case command_field do
+      0x30 ->
         Logger.debug("Command is C-ECHO")
         response_ds =
           Dicom.DataSet.from_keyword_list(
@@ -193,7 +192,7 @@ defmodule DicomNet.Association do
 
         {state, response}
 
-      _ ->
+      _ -> 
         new_state =
           state
           |> Map.put(:state, :receiving_data)
