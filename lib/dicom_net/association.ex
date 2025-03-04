@@ -172,6 +172,7 @@ defmodule DicomNet.Association do
 
     command_ds = Dicom.BinaryFormat.from_binary(data, endianness: :little, explicit: false)
     command_field = DataSet.value_for!(command_ds, :CommandField)
+    mid_de = mid_de = DataSet.value_for!(command_ds, :MessageID)
 
     case command_field do
       0x30 ->
