@@ -3,6 +3,9 @@ from io import BytesIO
 import pydicom
 
 
+print(pydicom.__version__)
+
+
 ds = pydicom.Dataset()
 
 # AE
@@ -45,9 +48,9 @@ ds.PatientName = "Doe^John"
 # SH
 ds.AccessionNumber = "SHORTSTRING"
 # SL
-ds.SelectorSLValue = -42
+ds.SelectorSLValue = [-(2**31), 2**31 - 1]
 # SS
-ds.SelectorSSValue = -42
+ds.SelectorSSValue = [-(2**15), 2**15 - 1]
 # ST
 ds.InstitutionAddress = "SHORTTEXT"
 # SV
@@ -71,19 +74,27 @@ ds.BatteryLevel = "UNLIMITEDTEXT"
 # UV
 ds.TotalNumberOfStudyRecords = 42424242
 
-
+# Private
 private_block = ds.private_block(0x4243, "Private Block 01", create=True)
 private_block.add_new(0x01, "SH", "Private Tag")
 
+# SQ
+nested1 = pydicom.Dataset()
+nested1.SeriesInstanceUID = "1.2"
+nested2 = pydicom.Dataset()
+nested2.SeriesInstanceUID = "1.3"
+ds.ReferencedSeriesSequence = [nested1, nested2]
+
 
 def serialize_single_data_element(
-        element: pydicom.DataElement,
-        implicit_vr: bool = False,
-        little_endian: bool = True) -> bytes:
+    element: pydicom.DataElement, implicit_vr: bool = False, little_endian: bool = True
+) -> bytes:
     ds = pydicom.Dataset()
     ds.add(element)
     buffer = BytesIO()
-    ds.save_as(buffer, implicit_vr=implicit_vr, little_endian=little_endian)
+    ds.is_implicit_VR = implicit_vr
+    ds.is_little_endian = little_endian
+    ds.save_as(buffer)
     return buffer.getvalue()
 
 
@@ -103,20 +114,23 @@ for element in ds.values():
                 continue
             data = serialize_single_data_element(
                 element, implicit_vr, little_endian)
-            print(f'sample = %{{options: [endianness: {
-                  ":little" if little_endian else ":big"}, explicit: {str(not implicit_vr).lower()}], data: "{data.hex()}"}}')
+            print(
+                f'sample=% {{options: [endianness: {
+                    ":little" if little_endian else ":big"
+                }, explicit: {str(not implicit_vr).lower()}], data: "{data.hex()}"}}'
+            )
     print()
 
 
-for ts in tses:
-    fmds = pydicom.FileMetaDataset()
-    fmds.TransferSyntaxUID = getattr(pydicom.uid, ts)
-    fmds.MediaStorageSOPClassUID = "1.2.3"
-    fmds.MediaStorageSOPInstanceUID = "1.2.3"
-
-    filename = f"test-{ts}.dcm"
-
-    fds = pydicom.FileDataset(filename, dataset=ds, file_meta=fmds)
-
-    with open(filename, "wb") as out_file:
-        pydicom.dcmwrite(out_file, fds, enforce_file_format=True)
+# for ts in tses:
+#     fmds = pydicom.FileMetaDataset()
+#     fmds.TransferSyntaxUID = getattr(pydicom.uid, ts)
+#     fmds.MediaStorageSOPClassUID = "1.2.3"
+#     fmds.MediaStorageSOPInstanceUID = "1.2.3"
+#
+#     filename = f"test-{ts}.dcm"
+#
+#     fds = pydicom.FileDataset(filename, dataset=ds, file_meta=fmds)
+#
+#     with open(filename, "wb") as out_file:
+#         pydicom.dcmwrite(out_file, fds, enforce_file_format=True)

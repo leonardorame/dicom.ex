@@ -185,22 +185,22 @@ defmodule Dicom.BinaryFormatVrsTest do
         group_number: 0x0072,
         element_number: 0x007C,
         vr: :SL,
-        values: [-42]
+        values: [-2_147_483_648, 2_147_483_647]
       },
-      explicit_vr_little_endian: "72007c00534c0400d6ffffff",
-      implicit_vr_little_endian: "72007c0004000000d6ffffff",
-      explicit_vr_big_endian: "0072007c534c0004ffffffd6"
+      explicit_vr_little_endian: "72007c00534c080000000080ffffff7f",
+      implicit_vr_little_endian: "72007c000800000000000080ffffff7f",
+      explicit_vr_big_endian: "0072007c534c0008800000007fffffff"
     },
     %{
       element: %DataElement{
         group_number: 0x0072,
         element_number: 0x007E,
         vr: :SS,
-        values: [-42]
+        values: [-32768, 32767]
       },
-      explicit_vr_little_endian: "72007e0053530200d6ff",
-      implicit_vr_little_endian: "72007e0002000000d6ff",
-      explicit_vr_big_endian: "0072007e53530002ffd6"
+      explicit_vr_little_endian: "72007e00535304000080ff7f",
+      implicit_vr_little_endian: "72007e00040000000080ff7f",
+      explicit_vr_big_endian: "0072007e5353000480007fff"
     },
     %{
       element: %DataElement{
@@ -394,6 +394,23 @@ defmodule Dicom.BinaryFormatVrsTest do
       end
 
     assert actual == expected
+  end
+
+  test "serializes data element", %{sample: sample, ts: ts} do
+    options =
+      case ts do
+        :explicit_vr_little_endian -> [endianness: :little, explicit: true]
+        :implicit_vr_little_endian -> [endianness: :little, explicit: false]
+        :explicit_vr_big_endian -> [endianness: :big, explicit: true]
+      end
+
+    # TODO: SQ serialization not yet supported
+    if sample[:element].vr != :SQ do
+      actual = BinaryFormat.serialize_data_element(sample[:element], options)
+      expected = :binary.decode_hex(sample[ts])
+
+      assert actual == expected
+    end
   end
 
   test "parses data element", %{sample: sample, ts: ts} do

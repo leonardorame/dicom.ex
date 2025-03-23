@@ -1,11 +1,26 @@
 defmodule Dicom.BinaryFormat do
   @moduledoc """
-  This module implements the DICOM binary data format according to
+  DICOM binary format serialization/deserialization as defined in
   [PS 3.5](https://dicom.nema.org/medical/dicom/current/output/chtml/part05/PS3.5.html).
   """
   require Integer
   alias Dicom.DataSet
   alias Dicom.DataElement
+
+  @typedoc """
+  Options for the de(serialization) of DICOM binaries.
+
+  Both little and big endian byte ordering is supported by
+  setting `endianness` to `:little` or `:big` respectively.
+  Big endian encoding is discouraged for new files.
+
+  Setting `explicit` to `true` serializes the data elements
+  with their value representations (VRs) included. If it
+  is set to `false`, implicit VR encoding is used. Readers
+  of implicit VR data sets must have access to a tag dictionary
+  defining the VRs for all contained data elements.
+  """
+  @type serialization_options :: [endianness: :little | :big, explicit: boolean()]
 
   # this is the list from DICOM 2024e
   # https://dicom.nema.org/medical/dicom/current/output/html/part05.html#note_6.2-3-2
@@ -340,9 +355,17 @@ defmodule Dicom.BinaryFormat do
     end
   end
 
+  @doc """
+  Read the next data element from a binary.
+
+  This function fails if the binary does not contain at least
+  one complete data element. Any additional data following the
+  data element is returned as the second element in the returned
+  tuple.
+  """
   @spec read_next_data_element(
           data :: binary(),
-          opts :: [endianness: :little | :big, explicit: boolean()]
+          opts :: serialization_options()
         ) :: {:ok, {Dicom.DataElement.t(), binary()}} | {:error, atom()}
   def read_next_data_element(<<>>, _opts), do: {:error, :no_data}
 
@@ -525,65 +548,115 @@ defmodule Dicom.BinaryFormat do
     end
   end
 
-  def serialize_u16(num, :little), do: <<num::unsigned-integer-little-16>>
-  def serialize_u32(num, :little), do: <<num::unsigned-integer-little-32>>
+  defp serialize_u16(num, :little), do: <<num::unsigned-integer-little-16>>
+  defp serialize_u16(num, :big), do: <<num::unsigned-integer-big-16>>
+  defp serialize_s16(num, :little), do: <<num::signed-integer-little-16>>
+  defp serialize_s16(num, :big), do: <<num::signed-integer-big-16>>
+  defp serialize_u32(num, :little), do: <<num::unsigned-integer-little-32>>
+  defp serialize_u32(num, :big), do: <<num::unsigned-integer-big-32>>
+  defp serialize_s32(num, :little), do: <<num::signed-integer-little-32>>
+  defp serialize_s32(num, :big), do: <<num::signed-integer-big-32>>
+  defp serialize_u64(num, :little), do: <<num::unsigned-integer-little-64>>
+  defp serialize_u64(num, :big), do: <<num::unsigned-integer-big-64>>
+  defp serialize_s64(num, :little), do: <<num::signed-integer-little-64>>
+  defp serialize_s64(num, :big), do: <<num::signed-integer-big-64>>
+  defp serialize_f32(num, :little), do: <<num::float-32-little>>
+  defp serialize_f32(num, :big), do: <<num::float-32-big>>
+  defp serialize_f64(num, :little), do: <<num::float-64-little>>
+  defp serialize_f64(num, :big), do: <<num::float-64-big>>
 
-  def serialize_uid(uid, _endianness) do
-    if rem(byte_size(uid), 2) == 1 do
-      uid <> <<0>>
+  defp serialize_at(tag, endianness) do
+    serialize_u16(Bitwise.bsr(tag, 16), endianness) <>
+      serialize_u16(Bitwise.band(tag, 0xFF), endianness)
+  end
+
+  defp serialize_binary(data, padding \\ <<0>>) do
+    if Integer.is_odd(byte_size(data)) do
+      data <> padding
     else
-      uid
+      data
     end
   end
 
-  def serialize_lo(string, _endianness) do
-    string <> <<0>>
-  end
-
-  def serialize_cs(string, _endianness) do
-    string <> <<0>>
-  end
-
-  def serialize_sh(string, _endianness) do
-    if rem(byte_size(string), 2) == 1 do
-      string <> <<0>>
-    else
-      string
-    end
-  end
-
-  def serialize_pn(string, _endianness) do
-    if Integer.is_odd(byte_size(string)) do
-      string <> <<0>>
-    else
-      string
-    end
-  end
-
+  @doc """
+  Serialize a data element according to the given `serialization_options`.
+  """
+  @spec serialize_data_element(DataElement.t(), serialization_options()) :: binary()
   def serialize_data_element(data_element, endianness: endianness, explicit: explicit) do
     group = serialize_u16(data_element.group_number, endianness)
     element = serialize_u16(data_element.element_number, endianness)
 
-    # TODO cannot handle VM > 1
     value =
       case data_element.vr do
-        :US -> serialize_u16(data_element |> DataElement.value(), endianness)
-        :UL -> serialize_u32(data_element |> DataElement.value(), endianness)
-        :UI -> serialize_uid(data_element |> DataElement.value(), endianness)
-        :LO -> serialize_lo(data_element |> DataElement.value(), endianness)
-        :SH -> serialize_sh(data_element |> DataElement.value(), endianness)
-        :PN -> serialize_pn(data_element |> DataElement.value(), endianness)
-        :CS -> serialize_cs(data_element |> DataElement.value(), endianness)
+        :US ->
+          data_element.values |> Enum.map(&serialize_u16(&1, endianness)) |> Enum.join()
+
+        :SS ->
+          data_element.values |> Enum.map(&serialize_s16(&1, endianness)) |> Enum.join()
+
+        :UL ->
+          data_element.values |> Enum.map(&serialize_u32(&1, endianness)) |> Enum.join()
+
+        :SL ->
+          data_element.values |> Enum.map(&serialize_s32(&1, endianness)) |> Enum.join()
+
+        :UV ->
+          data_element.values |> Enum.map(&serialize_u64(&1, endianness)) |> Enum.join()
+
+        :SV ->
+          data_element.values |> Enum.map(&serialize_s64(&1, endianness)) |> Enum.join()
+
+        :FL ->
+          data_element.values |> Enum.map(&serialize_f32(&1, endianness)) |> Enum.join()
+
+        :FD ->
+          data_element.values |> Enum.map(&serialize_f64(&1, endianness)) |> Enum.join()
+
+        :AT ->
+          data_element.values |> Enum.map(&serialize_at(&1, endianness)) |> Enum.join()
+
+        :UN ->
+          # unknown VRs do not get padded to even length
+          data_element.values |> Enum.join()
+
+        # TODO: Implement SQ serialization
+
+        vr when vr in [:OB, :OD, :OF, :OL, :OV, :OW, :UI] ->
+          data_element.values |> Enum.join() |> serialize_binary()
+
+        vr
+        when vr in [
+               :AE,
+               :AS,
+               :CS,
+               :DA,
+               :DS,
+               :DT,
+               :IS,
+               :LO,
+               :LT,
+               :PN,
+               :SH,
+               :ST,
+               :TM,
+               :UC,
+               :UT,
+               :UR
+             ] ->
+          data_element.values |> Enum.join("\\") |> serialize_binary(" ")
       end
 
-    case explicit do
-      false ->
+    if explicit do
+      if is_long_data_element(data_element.vr) do
         value_length = serialize_u32(byte_size(value), endianness)
-        group <> element <> value_length <> value
-
-      true ->
+        group <> element <> to_string(data_element.vr) <> <<0, 0>> <> value_length <> value
+      else
         value_length = serialize_u16(byte_size(value), endianness)
         group <> element <> to_string(data_element.vr) <> value_length <> value
+      end
+    else
+      value_length = serialize_u32(byte_size(value), endianness)
+      group <> element <> value_length <> value
     end
   end
 
