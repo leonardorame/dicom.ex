@@ -578,6 +578,33 @@ defmodule Dicom.BinaryFormat do
     end
   end
 
+  defp serialize_sequence_item(
+         data_set,
+         [endianness: endianness, explicit: _explicit] = serialization_options
+       ) do
+    data_set_serialized = serialize(data_set, serialization_options)
+    item_length = serialize_u32(byte_size(data_set_serialized), endianness)
+    item_delim_group = serialize_u16(0xFFFE, endianness)
+    item_delim_element = serialize_u16(0xE000, endianness)
+    item_delim_group <> item_delim_element <> item_length <> data_set_serialized
+  end
+
+  defp serialize_sequence(
+         datasets,
+         serialization_options
+       ) do
+    ds_ser =
+      datasets |> Enum.map(&serialize_sequence_item(&1, serialization_options)) |> Enum.join(<<>>)
+
+    # this is not necessary when explicit length is known
+    # seq_delim_group = serialize_u16(0xFFFE, endianness)
+    # seq_delim_element = serialize_u16(0xE0DD, endianness)
+    # seq_delim_item = seq_delim_group <> seq_delim_element <> <<0::32>>
+    # ds_ser <> seq_delim_item
+
+    ds_ser
+  end
+
   @doc """
   Serialize a data element according to the given `serialization_options`.
   """
@@ -619,7 +646,8 @@ defmodule Dicom.BinaryFormat do
           # unknown VRs do not get padded to even length
           data_element.values |> Enum.join()
 
-        # TODO: Implement SQ serialization
+        :SQ ->
+          serialize_sequence(data_element.values, endianness: endianness, explicit: explicit)
 
         vr when vr in [:OB, :OD, :OF, :OL, :OV, :OW, :UI] ->
           data_element.values |> Enum.join() |> serialize_binary()

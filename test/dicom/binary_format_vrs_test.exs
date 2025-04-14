@@ -404,13 +404,10 @@ defmodule Dicom.BinaryFormatVrsTest do
         :explicit_vr_big_endian -> [endianness: :big, explicit: true]
       end
 
-    # TODO: SQ serialization not yet supported
-    if sample[:element].vr != :SQ do
-      actual = BinaryFormat.serialize_data_element(sample[:element], options)
-      expected = :binary.decode_hex(sample[ts])
+    actual = BinaryFormat.serialize_data_element(sample[:element], options)
+    expected = :binary.decode_hex(sample[ts])
 
-      assert actual == expected
-    end
+    assert actual == expected
   end
 
   test "parses data element", %{sample: sample, ts: ts} do
