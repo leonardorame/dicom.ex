@@ -1,6 +1,4 @@
 defmodule Dicom.BinaryFormatTest do
-  alias Dicom.DataElement
-  alias Dicom.DataSet
   alias Dicom.BinaryFormat
 
   use ExUnit.Case
@@ -17,7 +15,7 @@ defmodule Dicom.BinaryFormatTest do
       BinaryFormat.read_next_data_element(data, endianness: :little, explicit: true)
 
     assert length(de.values) == 1
-    assert map_size(List.first(de.values)) == 3
+    assert Enum.count(List.first(de.values)) == 3
 
     # implicit length list
     data =
@@ -31,7 +29,7 @@ defmodule Dicom.BinaryFormatTest do
       BinaryFormat.read_next_data_element(data, endianness: :little, explicit: true)
 
     assert length(de.values) == 1
-    assert map_size(List.first(de.values)) == 2
+    assert Enum.count(List.first(de.values)) == 2
 
     # nested list
     # TODO replace with test data where nested sequene has actual content
@@ -47,16 +45,15 @@ defmodule Dicom.BinaryFormatTest do
 
     assert length(de.values) == 1
 
-    nested_sequence =
+    {_tag, nested_sequence} =
       de.values
       |> List.first()
-      |> Map.values()
-      |> Enum.filter(fn de -> de.vr == :SQ end)
+      |> Enum.filter(fn {_tag, de} -> de.vr == :SQ end)
       |> List.first()
 
     assert length(nested_sequence.values) == 0
 
-    # sequence with multiple items
+    # sequence with multiple itemsmix test cover.st
     data =
       :binary.decode_hex(
         "180011605351000018010000FEFF00E0840000001800126055530200010018001460555302000100180016605" <>
@@ -72,8 +69,8 @@ defmodule Dicom.BinaryFormatTest do
       BinaryFormat.read_next_data_element(data, endianness: :little, explicit: true)
 
     assert length(de.values) == 2
-    assert map_size(List.first(de.values)) == 11
-    assert map_size(Enum.at(de.values, 1)) == 11
+    assert Enum.count(List.first(de.values)) == 11
+    assert Enum.count(Enum.at(de.values, 1)) == 11
   end
 
   defp is_dicom_file(path) do

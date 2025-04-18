@@ -437,7 +437,7 @@ defmodule Dicom.BinaryFormat do
                   DataElement.from(
                     group_number,
                     element_number,
-                    :pixel_data,
+                    value_rep,
                     pixel_value_sequence
                   )
 
@@ -535,6 +535,7 @@ defmodule Dicom.BinaryFormat do
     ts_options = Map.fetch!(file_ts, :options)
 
     ds = from_binary(rest, ts_options)
+    ds = %DataSet{elements: ds.elements, file_meta: file_meta_ds}
     ds
   end
 
@@ -688,6 +689,13 @@ defmodule Dicom.BinaryFormat do
     end
   end
 
+  @doc """
+  Serialize a DIMSE command data set.
+
+  Command data sets are always encoded with little endian, implicit VR
+  transfer syntax. In addition, the byte length of the command data set
+  is prefixed as first element.
+  """
   def serialize_command_data_set(data_set) do
     # command data set per standard is little endian, implicit vr
     # https://dicom.nema.org/dicom/2013/output/chtml/part07/sect_6.3.html
@@ -710,7 +718,7 @@ defmodule Dicom.BinaryFormat do
     serialized
   end
 
-  def serialize(data_set, [endianness: endianess, explicit: explicit] = serialization_options) do
+  def serialize(data_set, serialization_options) do
     serialized =
       for {_tag, de} <- data_set do
         Dicom.BinaryFormat.serialize_data_element(de, serialization_options)

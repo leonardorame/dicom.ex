@@ -14,6 +14,16 @@ in production and absolutely not in clinical contexts.
 * Supports VRs and tag dictionary as of DICOM version 2024d
 * Receive C-ECHO, C-FIND and C-STORE network requests ([DICOM Part 3.7](https://dicom.nema.org/medical/dicom/current/output/chtml/part07/PS3.7.html))
 
+## Tools and Examples
+
+### Loading and Displaying DICOM Files
+
+The mix task [dicom.dump](lib/mix/tasks/dicom.dump.ex) contains a minimal example of how to load and display DICOM files.
+
+Usage:
+
+    mix dicom.dump path/to/file.dcm
+
 ## SCP Handlers
 
 At the moment of configuring SCP services, the final developer must define functions called `event_handlers` which will take

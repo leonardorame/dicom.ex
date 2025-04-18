@@ -366,12 +366,6 @@ defmodule Dicom.BinaryFormatVrsTest do
         do: %{sample: sample, ts: ts}
       )
 
-  defp parse_test_sample(%{options: options, data: data}) do
-    data = :binary.decode_hex(data)
-    {:ok, {data_element, <<>>}} = BinaryFormat.read_next_data_element(data, options)
-    data_element
-  end
-
   @comparison_precision_decimals 5
 
   defp assert_data_elements_equal(actual, expected) do
