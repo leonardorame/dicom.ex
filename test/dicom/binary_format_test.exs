@@ -1,4 +1,5 @@
 defmodule Dicom.BinaryFormatTest do
+  alias Dicom.DataSet
   alias Dicom.BinaryFormat
 
   use ExUnit.Case
@@ -113,5 +114,23 @@ defmodule Dicom.BinaryFormatTest do
       ])
 
     assert failing_files == expected_failing
+  end
+
+  test "file serialization" do
+    ds =
+      DataSet.from_keyword_list(
+        SOPClassUID: "1.2",
+        SOPInstanceUID: "1.2.3",
+        OriginalAttributesSequence: [
+          DataSet.from_keyword_list(StudyID: "STD1"),
+          DataSet.from_keyword_list(StudyID: "STD2")
+        ]
+      )
+      |> DataSet.with_transfer_syntax(:explicit_vr_little_endian)
+
+    data = BinaryFormat.to_file_data(ds)
+
+    IO.inspect(data, label: "Part10")
+    File.write!("writetest.dcm", data)
   end
 end

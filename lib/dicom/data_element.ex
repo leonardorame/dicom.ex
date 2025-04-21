@@ -20,6 +20,19 @@ defmodule Dicom.DataElement do
     vr == :SQ
   end
 
+  @spec new(integer(), atom(), [any()]) :: t()
+  def new(tag, value_representation, values) do
+    group_number = Bitwise.bsr(tag, 16)
+    element_number = Bitwise.band(tag, 0xFFFF)
+
+    %DataElement{
+      group_number: group_number,
+      element_number: element_number,
+      vr: value_representation,
+      values: values
+    }
+  end
+
   def from(group_number, element_number, value_representation, values) do
     %DataElement{
       :group_number => group_number,

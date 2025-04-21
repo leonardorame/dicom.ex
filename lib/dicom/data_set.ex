@@ -2,11 +2,28 @@ defmodule Dicom.DataSet do
   @moduledoc """
   A [DICOM data set](https://dicom.nema.org/dicom/2013/output/chtml/part05/chapter_7.html) is a collection of `Dicom.DataElement`s uniquely identified by their numeric tags.
   """
+  alias Dicom.UidRegistry
+  alias Dicom.DataSet
   alias Dicom.DataElement
 
   defstruct [:elements, :file_meta]
 
   @type t :: %__MODULE__{}
+
+  @doc """
+  Create an empty data set.
+
+  ## Examples
+
+      iex> DataSet.empty()
+  """
+  @spec empty() :: t()
+  def empty() do
+    %__MODULE__{
+      elements: %{},
+      file_meta: nil
+    }
+  end
 
   @doc """
   Create a data set from a enumerable of `Dicom.DataElement`s.
@@ -23,7 +40,7 @@ defmodule Dicom.DataSet do
       |> Enum.map(&{DataElement.tag(&1), &1})
       |> Enum.into(%{})
 
-    %__MODULE__{elements: elem_map}
+    %__MODULE__{elements: elem_map, file_meta: nil}
   end
 
   @doc """
@@ -135,6 +152,83 @@ defmodule Dicom.DataSet do
     ds
     |> fetch!(key)
     |> DataElement.value(index)
+  end
+
+  @doc """
+  Updates element identified by `key` in `data_set`.
+
+  The element identified by `key` is updated to `value_representation`
+  and `values`. If `key` already exists, it is overridden.
+
+  Returns the updated data set.
+
+  ## Examples
+
+      iex> ds = DataSet.empty()
+      ...>      |> DataSet.put(:SOPInstanceUID, :UI, ["1.2.3"])
+      iex> DataSet.value_for!(ds, :SOPInstanceUID)
+      "1.2.3"
+  """
+  @spec put(t(), key_type(), atom(), [any()]) :: t()
+  def put(data_set, key, value_representation, values) do
+    {:ok, tag} = resolve_key(key)
+    data_element = Dicom.DataElement.new(tag, value_representation, values)
+
+    %DataSet{
+      elements: Map.put(data_set.elements, tag, data_element),
+      file_meta: data_set.file_meta
+    }
+  end
+
+  @doc """
+  Checks if `data_set` contains an element `key`.
+
+  ## Examples
+
+      iex> ds = DataSet.from_keyword_list(StudyID: "1.2.3")
+      iex> DataSet.has_key?(ds, :StudyID)
+      true
+      iex> DataSet.has_key?(ds, :PatientID)
+      false
+  """
+  @spec has_key?(t(), key_type()) :: boolean()
+  def has_key?(data_set, key) do
+    {:ok, tag} = resolve_key(key)
+    Map.has_key?(data_set.elements, tag)
+  end
+
+  @doc """
+  Set a default value for `key` in `data_set` if there is no existing value.
+  """
+  @spec put_default(t(), key_type(), atom(), [any()]) :: t()
+  def put_default(data_set, key, value_representation, values) do
+    {:ok, tag} = resolve_key(key)
+
+    if not has_key?(data_set, tag) do
+      put(data_set, tag, value_representation, values)
+    else
+      data_set
+    end
+  end
+
+  def file_meta(data_set) do
+    if(is_nil(data_set.file_meta), do: DataSet.empty(), else: data_set.file_meta)
+  end
+
+  def with_file_meta_from_keywords(data_set, meta_attributes) do
+    file_meta = DataSet.from_keyword_list(meta_attributes)
+    %__MODULE__{elements: data_set.elements, file_meta: file_meta}
+  end
+
+  def with_transfer_syntax(data_set, transfer_syntax_name) do
+    ts_uid = UidRegistry.get_transfer_syntax_uid_by_name!(transfer_syntax_name)
+
+    file_meta_new =
+      data_set
+      |> DataSet.file_meta()
+      |> DataSet.put(:TransferSyntaxUID, :UI, [ts_uid])
+
+    %__MODULE__{elements: data_set.elements, file_meta: file_meta_new}
   end
 end
 

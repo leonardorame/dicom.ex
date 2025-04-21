@@ -4,6 +4,7 @@ defmodule Dicom.BinaryFormat do
   [PS 3.5](https://dicom.nema.org/medical/dicom/current/output/chtml/part05/PS3.5.html).
   """
   require Integer
+  alias Dicom.UidRegistry
   alias Dicom.DataSet
   alias Dicom.DataElement
 
@@ -571,11 +572,71 @@ defmodule Dicom.BinaryFormat do
       serialize_u16(Bitwise.band(tag, 0xFF), endianness)
   end
 
+  @doc """
+  Serializes `ds` into a full binary string following [DICOM part 10](https://dicom.nema.org/medical/dicom/current/output/html/part10.html#chapter_7).
+  """
+  def to_file_data(data_set, preamble \\ <<0::128*8>>) do
+    file_meta =
+      if(is_nil(data_set.file_meta), do: DataSet.empty(), else: data_set.file_meta)
+      |> DataSet.put_default(:FileMetaInformationVersion, :OB, [<<0, 1>>])
+      |> DataSet.put_default(
+        :MediaStorageSOPClassUID,
+        :UI,
+        [DataSet.value_for!(data_set, :SOPClassUID)]
+      )
+      |> DataSet.put_default(
+        :MediaStorageSOPInstanceUID,
+        :UI,
+        [DataSet.value_for!(data_set, :SOPInstanceUID)]
+      )
+      |> DataSet.put_default(:ImplementationClassUID, :UI, ["1.2.826.0.1.3680043.10.1603.0.0"])
+      |> DataSet.put_default(:ImplementationVersionName, :SH, ["DICOM.ex 0.x"])
+
+    header_serialization_opts = [endianness: :little, explicit: true]
+
+    file_meta_serialized = serialize(file_meta, header_serialization_opts)
+    file_meta_length = DataElement.new(0x00020000, :UL, [byte_size(file_meta_serialized)])
+
+    file_meta_length_serialized =
+      serialize_data_element(file_meta_length, header_serialization_opts)
+
+    # data part
+    ts = file_meta |> DataSet.value_for!(:TransferSyntaxUID) |> UidRegistry.get_transfer_syntax()
+    data_serialized = serialize(data_set, ts.options)
+
+    data =
+      preamble <> "DICM" <> file_meta_length_serialized <> file_meta_serialized <> data_serialized
+
+    data
+  end
+
   defp serialize_binary(data, padding \\ <<0>>) do
     if Integer.is_odd(byte_size(data)) do
       data <> padding
     else
       data
+    end
+  end
+
+  defp serialize_pixel_data(data, endianness: endianness, explicit: _explicit) do
+    # TODO: probably distinction between native and encapsulated pixel data should be more explicit
+    if length(data) == 1 do
+      serialize_binary(Enum.at(data, 0))
+    else
+      data_element_tag = serialize_u16(0xFFFE, endianness) <> serialize_u16(0xE000, endianness)
+
+      frame_data =
+        data
+        |> Enum.map(fn frame ->
+          data_element_tag <> serialize_u32(byte_size(frame), endianness) <> frame
+        end)
+        |> Enum.into(<<>>)
+
+      seq_delimination =
+        serialize_u16(0xFFFE, endianness) <>
+          serialize_u16(0xE0DD, endianness) <> serialize_u32(0, endianness)
+
+      frame_data <> seq_delimination
     end
   end
 
@@ -613,6 +674,7 @@ defmodule Dicom.BinaryFormat do
   def serialize_data_element(data_element, endianness: endianness, explicit: explicit) do
     group = serialize_u16(data_element.group_number, endianness)
     element = serialize_u16(data_element.element_number, endianness)
+    is_pixel_data = data_element.group_number == 0x7FE0 and data_element.element_number == 0x0010
 
     value =
       case data_element.vr do
@@ -650,7 +712,14 @@ defmodule Dicom.BinaryFormat do
         :SQ ->
           serialize_sequence(data_element.values, endianness: endianness, explicit: explicit)
 
-        vr when vr in [:OB, :OD, :OF, :OL, :OV, :OW, :UI] ->
+        :OB ->
+          if is_pixel_data do
+            serialize_pixel_data(data_element.values, endianness: endianness, explicit: explicit)
+          else
+            data_element.values |> Enum.join() |> serialize_binary()
+          end
+
+        vr when vr in [:OD, :OF, :OL, :OV, :OW, :UI] ->
           data_element.values |> Enum.join() |> serialize_binary()
 
         vr
@@ -675,16 +744,18 @@ defmodule Dicom.BinaryFormat do
           data_element.values |> Enum.join("\\") |> serialize_binary(" ")
       end
 
+    data_length = if(is_pixel_data, do: 0xFFFFFFFF, else: byte_size(value))
+
     if explicit do
       if is_long_data_element(data_element.vr) do
-        value_length = serialize_u32(byte_size(value), endianness)
+        value_length = serialize_u32(data_length, endianness)
         group <> element <> to_string(data_element.vr) <> <<0, 0>> <> value_length <> value
       else
-        value_length = serialize_u16(byte_size(value), endianness)
+        value_length = serialize_u16(data_length, endianness)
         group <> element <> to_string(data_element.vr) <> value_length <> value
       end
     else
-      value_length = serialize_u32(byte_size(value), endianness)
+      value_length = serialize_u32(data_length, endianness)
       group <> element <> value_length <> value
     end
   end
@@ -720,9 +791,9 @@ defmodule Dicom.BinaryFormat do
 
   def serialize(data_set, serialization_options) do
     serialized =
-      for {_tag, de} <- data_set do
-        Dicom.BinaryFormat.serialize_data_element(de, serialization_options)
-      end
+      data_set
+      |> Enum.sort(fn {tag1, _el1}, {tag2, _el2} -> tag1 < tag2 end)
+      |> Enum.map(fn {_tag, el} -> serialize_data_element(el, serialization_options) end)
       |> Enum.into(<<>>)
 
     serialized

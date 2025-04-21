@@ -123,7 +123,6 @@ defmodule DicomNet.Association do
          },
          %{socket: _socket, state: :waiting_for_association} = state
        ) do
-
     # If the :association handler is defined 
     # the acceptance/rejection can be handled by
     # the host application.
@@ -172,11 +171,12 @@ defmodule DicomNet.Association do
 
     command_ds = Dicom.BinaryFormat.from_binary(data, endianness: :little, explicit: false)
     command_field = DataSet.value_for!(command_ds, :CommandField)
-    mid_de = mid_de = DataSet.value_for!(command_ds, :MessageID)
+    mid_de = DataSet.value_for!(command_ds, :MessageID)
 
     case command_field do
       0x30 ->
         Logger.debug("Command is C-ECHO")
+
         response_ds =
           Dicom.DataSet.from_keyword_list(
             AffectedSOPClassUID: @verification_sopclassuid,
@@ -193,7 +193,7 @@ defmodule DicomNet.Association do
 
         {state, response}
 
-      _ -> 
+      _ ->
         new_state =
           state
           |> Map.put(:state, :receiving_data)
@@ -230,7 +230,7 @@ defmodule DicomNet.Association do
          %{
            state: :receiving_data,
            received_data: received_data,
-           association: %{presentation_contexts: presentation_contexts},
+           association: %{presentation_contexts: presentation_contexts} = association,
            command: command,
            socket: socket
          } = state
@@ -243,7 +243,14 @@ defmodule DicomNet.Association do
     %{uid: ts_uid} = syntaxes |> Enum.find(fn el -> Map.get(el, :syntax_type) == :transfer end)
     %{name: _ts_name, options: ts_options} = Dicom.UidRegistry.get_transfer_syntax(ts_uid)
 
-    ds = Dicom.BinaryFormat.from_binary(data, ts_options)
+    ds =
+      Dicom.BinaryFormat.from_binary(data, ts_options)
+      |> DataSet.with_file_meta_from_keywords(
+        TransferSyntaxUID: ts_uid,
+        SendingApplicationEntityTitle: Map.get(association, :calling_ae_title),
+        ReceivingApplicationEntityTitle: Map.get(association, :called_ae_title)
+      )
+
     command_code = DataSet.value_for!(command, :CommandField)
 
     response =
