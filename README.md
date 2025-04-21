@@ -10,7 +10,7 @@ in production and absolutely not in clinical contexts.
 ## Features
 
 * General methods to work with DICOM data sets and elements
-* Read data sets from files encode according to [DICOM Part 3.10](https://dicom.nema.org/medical/dicom/current/output/chtml/part10/chapter_7.html)
+* Read/write "part 10" DICOM files ([DICOM Part 3.10](https://dicom.nema.org/medical/dicom/current/output/chtml/part10/chapter_7.html))
 * Supports VRs and tag dictionary as of DICOM version 2024d
 * Receive C-ECHO, C-FIND and C-STORE network requests ([DICOM Part 3.7](https://dicom.nema.org/medical/dicom/current/output/chtml/part07/PS3.7.html))
 
@@ -24,26 +24,18 @@ Usage:
 
     mix dicom.dump path/to/file.dcm
 
-## SCP Handlers
+### Receiving DICOM transfers via network
 
-At the moment of configuring SCP services, the final developer must define functions called `event_handlers` which will take
-care of the response to the SCU, based on the data received.  
+The mix task [dicom.scp](lib/mix/tasks/dicom.scp.ex) runs a minimal storage service provider (SCP) capable
+of printing and saving received data sets.
 
-At the moment of writing this readme, there are these handlers:  
+Usage:
 
-**association_validator**  
-> Allows/Rejects incomming connections.   
-
-**cfind**  
-> Receives incoming C-FIND requests and returns a Stream containing matches.  
-
-**cstore**  
-> Receives incoming C-STORE requests. The handler have access to the incoming dicom file and must take care of saving to filesystem, database, etc. 
-
+    mix dicom.scp --port 8104 --print --save ./scp_incoming
 
 ## Examples
 
-## Dicom parsing and writing
+## DICOM parsing and writing
 
 The following examples shows how to parse and access/write data from/to dicom files.  
 
