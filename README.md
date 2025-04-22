@@ -12,7 +12,7 @@ in production and absolutely not in clinical contexts.
 * General methods to work with DICOM data sets and elements
 * Read/write "part 10" DICOM files ([DICOM Part 3.10](https://dicom.nema.org/medical/dicom/current/output/chtml/part10/chapter_7.html))
 * Supports VRs and tag dictionary as of DICOM version 2024d
-* Receive C-ECHO, C-FIND and C-STORE network requests ([DICOM Part 3.7](https://dicom.nema.org/medical/dicom/current/output/chtml/part07/PS3.7.html))
+* Handle C-ECHO, C-FIND and C-STORE network requests ([DICOM Part 3.7](https://dicom.nema.org/medical/dicom/current/output/chtml/part07/PS3.7.html))
 
 ## Tools and Examples
 
@@ -24,7 +24,7 @@ Usage:
 
     mix dicom.dump path/to/file.dcm
 
-### Receiving DICOM transfers via network
+### Receiving DICOM Network Transfers
 
 The mix task [dicom.scp](lib/mix/tasks/dicom.scp.ex) runs a minimal storage service provider (SCP) capable
 of printing and saving received data sets.
@@ -53,15 +53,20 @@ assert Dicom.DataSet.value_for!(ds, :PatientID) == "ABC123"
 assert Dicom.DataSet.value_for!(ds, :ImageType, 2) == "Test3"
 ```
 
-### Read DICOM data set from file
+### Read/Write DICOM Data Set From/To File
 
 ```elixir
-ds = Dicom.BinaryFormat.from_file!("test/test_files/test-ExplicitVRLittleEndian.dcm")
+serialized =
+  Dicom.BinaryFormat.from_file!("demo.dcm")
+  |> Dicom.DataSet.put(:PatientID, :SH, ["ANON123"])
+  |> Dicom.DataSet.put(:PatientName, :PN, ["Doe^John"])
+  |> Dicom.BinaryFormat.to_file_data()
+File.write!("anonymized.dcm", serialized)
 ```
 
-## Dicom SCP
+## DICOM DIMSE Handlers
 
-The following examples show how to create Dicom SCP services and their handlers.  
+The following examples show how to create DICOM DIMSE services.  
 
 ### Association Validation
 

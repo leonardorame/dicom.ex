@@ -573,7 +573,7 @@ defmodule Dicom.BinaryFormat do
   end
 
   @doc """
-  Serializes `ds` into a full binary string following [DICOM part 10](https://dicom.nema.org/medical/dicom/current/output/html/part10.html#chapter_7).
+  Serializes `data_set` into a full binary string following [DICOM part 10](https://dicom.nema.org/medical/dicom/current/output/html/part10.html#chapter_7).
   """
   def to_file_data(data_set, preamble \\ <<0::128*8>>) do
     file_meta =

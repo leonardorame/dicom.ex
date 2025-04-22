@@ -199,6 +199,17 @@ defmodule Dicom.DataSet do
 
   @doc """
   Set a default value for `key` in `data_set` if there is no existing value.
+
+  ## Examples
+
+      iex> ds = DataSet.from_keyword_list(StudyID: "1.2.3")
+      iex> ds = ds
+      ...>      |> DataSet.put_default(:PatientID, :SH, ["PAT123"])
+      ...>      |> DataSet.put_default(:StudyID, :SH, ["already_set"])
+      iex> DataSet.value_for!(ds, :PatientID)
+      "PAT123"
+      iex> DataSet.value_for!(ds, :StudyID)
+      "1.2.3"
   """
   @spec put_default(t(), key_type(), atom(), [any()]) :: t()
   def put_default(data_set, key, value_representation, values) do
@@ -211,15 +222,47 @@ defmodule Dicom.DataSet do
     end
   end
 
+  @doc """
+  Access `file_meta` of a data set.
+
+  Returns an empty data set if no `file_meta` exists.
+  """
+  @spec file_meta(t()) :: t()
   def file_meta(data_set) do
     if(is_nil(data_set.file_meta), do: DataSet.empty(), else: data_set.file_meta)
   end
 
+  @doc """
+  Add `file_meta` to dataset by the `meta_attributes` keyword list.
+
+  ## Examples
+
+      iex> ds = DataSet.from_keyword_list(SOPInstanceUID: "1.2.3")
+      ...>      |> DataSet.with_file_meta_from_keywords(TransferSyntaxUID: "1.2.840.10008.1.2.1")
+      iex> ds
+      ...> |> DataSet.file_meta()
+      ...> |> DataSet.value_for!(:TransferSyntaxUID)
+      "1.2.840.10008.1.2.1"
+  """
+  @spec with_file_meta_from_keywords(t(), [{atom(), any()}]) :: t()
   def with_file_meta_from_keywords(data_set, meta_attributes) do
     file_meta = DataSet.from_keyword_list(meta_attributes)
     %__MODULE__{elements: data_set.elements, file_meta: file_meta}
   end
 
+  @doc """
+  Add transfer syntax by `transfer_syntax_name` to `file_meta` of `data_set`.
+
+  ## Examples
+
+      iex> ds = DataSet.empty()
+      ...>      |> DataSet.with_transfer_syntax(:explicit_vr_little_endian)
+      iex> ds
+      ...> |> DataSet.file_meta()
+      ...> |> DataSet.value_for!(:TransferSyntaxUID)
+      "1.2.840.10008.1.2.1"
+  """
+  @spec with_transfer_syntax(t(), atom()) :: t()
   def with_transfer_syntax(data_set, transfer_syntax_name) do
     ts_uid = UidRegistry.get_transfer_syntax_uid_by_name!(transfer_syntax_name)
 
