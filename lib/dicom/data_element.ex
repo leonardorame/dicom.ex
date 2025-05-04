@@ -141,10 +141,6 @@ defimpl String.Chars, for: Dicom.DataElement do
 
     str = "(#{group}, #{element}) #{vr}: [#{values_str}]" |> append_to_first_line(name_str)
 
-    if not String.valid?(str) do
-      IO.inspect(str, label: "Invalid #{group}, #{element}, #{vr}")
-    end
-
     str
   end
 end

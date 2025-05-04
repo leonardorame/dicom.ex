@@ -155,6 +155,24 @@ defmodule Dicom.DataSet do
   end
 
   @doc """
+  Put `data_element` in `data_set`.
+
+  If an element with the same tag already exists, it is overridden.
+  """
+  @spec put(t(), DataElement.t()) :: t()
+  def put(data_set, data_element) do
+    %DataSet{
+      elements:
+        Map.put(
+          data_set.elements,
+          Bitwise.bsl(data_element.group_number, 16) + data_element.element_number,
+          data_element
+        ),
+      file_meta: data_set.file_meta
+    }
+  end
+
+  @doc """
   Updates element identified by `key` in `data_set`.
 
   The element identified by `key` is updated to `value_representation`
@@ -220,6 +238,18 @@ defmodule Dicom.DataSet do
     else
       data_set
     end
+  end
+
+  @doc """
+  Assigns `file_meta_data_set` as file meta to `data_set`.
+
+  Returns the updated data set.
+  """
+  def with_file_meta(data_set, file_meta_data_set) do
+    %DataSet{
+      elements: data_set.elements,
+      file_meta: file_meta_data_set
+    }
   end
 
   @doc """

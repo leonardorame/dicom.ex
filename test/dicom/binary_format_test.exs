@@ -130,7 +130,6 @@ defmodule Dicom.BinaryFormatTest do
 
     data = BinaryFormat.to_file_data(ds)
 
-    IO.inspect(data, label: "Part10")
     File.write!("writetest.dcm", data)
   end
 end
