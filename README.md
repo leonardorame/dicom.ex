@@ -282,3 +282,9 @@ Enum.each(results, fn ds ->
   IO.inspect(ds, label: "C-FIND")
 end)
 ```
+
+You can also run this example using the provided Mix task:
+
+```
+mix dicom.cfind.test
+```
