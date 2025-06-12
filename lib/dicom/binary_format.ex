@@ -1,9 +1,25 @@
+defmodule Dicom.BinaryFormat.ParseError do
+  defexception [:message, :group_number, :element_number, :byte_offset]
+end
+
 defmodule Dicom.BinaryFormat do
   @moduledoc """
   DICOM binary format serialization/deserialization as defined in
   [PS 3.5](https://dicom.nema.org/medical/dicom/current/output/chtml/part05/PS3.5.html).
+
+  A simple example of reading, manipulating and writing a DICOM
+  file looks as follows:
+
+      iex> {:ok, ds} = File.read!("some-file.dcm") |> BinaryFormat.from_file_data()
+      iex> ds = Dicom.DataSet.put(ds, :PatientName, :PN, ["Anonymized"])
+      iex> data = BinaryFormat.to_file_data(ds)
+      iex> File.write!("some-file-anon.dcm", data)
   """
   require Integer
+  require Logger
+  alias ElixirLS.LanguageServer.Providers.Completion.Reducers.Returns
+  alias Dicom.BinaryFormat
+  alias Dicom.UidRegistry
   alias Dicom.DataSet
   alias Dicom.DataElement
 
@@ -109,7 +125,10 @@ defmodule Dicom.BinaryFormat do
       :UT,
       :UN,
       :UR,
-      :UV
+      :UV,
+      :OV,
+      :OD,
+      :OL
     ]
   end
 
@@ -249,15 +268,15 @@ defmodule Dicom.BinaryFormat do
   end
 
   defp parse_value(:SQ, data, endianness, explicitness) do
-    {values, <<>>} =
-      from_binary_until(data, 0xFFFEE0DD, endianness: endianness, explicit: explicitness)
+    {elements, _remaining_data} =
+      read_from_binary!(data, 0xFFFEE0DD, true, endianness: endianness, explicit: explicitness)
 
-    values
+    elements
     |> normalize_sequence_elements()
   end
 
   defp parse_value(binary_vr, data, _endianness, _explicit)
-       when binary_vr in [:OB, :OW, :UN] do
+       when binary_vr in [:OB, :OW, :UN, :OF, :OV, :OL, :OD] do
     [data]
   end
 
@@ -355,6 +374,15 @@ defmodule Dicom.BinaryFormat do
     end
   end
 
+  defp read_tag(data, endianness: endianness, explicit: _explicit) do
+    <<group_number::binary-size(2), element_number::binary-size(2), rest::binary>> = data
+
+    group_number = :binary.decode_unsigned(group_number, endianness)
+    element_number = :binary.decode_unsigned(element_number, endianness)
+
+    {{group_number, element_number}, rest}
+  end
+
   @doc """
   Read the next data element from a binary.
 
@@ -367,13 +395,11 @@ defmodule Dicom.BinaryFormat do
           data :: binary(),
           opts :: serialization_options()
         ) :: {:ok, {Dicom.DataElement.t(), binary()}} | {:error, atom()}
+
   def read_next_data_element(<<>>, _opts), do: {:error, :no_data}
 
-  def read_next_data_element(data, endianness: endianness, explicit: explicit) do
-    <<group_number::binary-size(2), element_number::binary-size(2), rest::binary>> = data
-
-    group_number = :binary.decode_unsigned(group_number, endianness)
-    element_number = :binary.decode_unsigned(element_number, endianness)
+  def read_next_data_element(data, [endianness: endianness, explicit: explicit] = opts) do
+    {{group_number, element_number}, rest} = read_tag(data, opts)
 
     is_private_element = Integer.is_odd(group_number)
 
@@ -386,27 +412,35 @@ defmodule Dicom.BinaryFormat do
             group_number,
             element_number,
             item_type,
-            data_length
+            [data_length]
           ), rest}}
 
       false ->
         {value_rep, rest} =
-          cond do
-            explicit ->
-              <<value_rep::binary-size(2), rest::binary>> = rest
+          try do
+            cond do
+              explicit ->
+                <<value_rep::binary-size(2), rest::binary>> = rest
 
-              value_rep = vr_to_atom(value_rep)
+                value_rep = vr_to_atom(value_rep)
 
-              {value_rep, rest}
+                {value_rep, rest}
 
-            is_private_element ->
-              {get_private_tag_vr(group_number, element_number), rest}
+              is_private_element ->
+                {get_private_tag_vr(group_number, element_number), rest}
 
-            true ->
-              {:ok, value_rep} =
-                Dicom.TagDict.get_by_tag_parts(group_number, element_number, :vr)
+              true ->
+                {:ok, value_rep} =
+                  Dicom.TagDict.get_by_tag_parts(group_number, element_number, :vr)
 
-              {value_rep, rest}
+                {value_rep, rest}
+            end
+          rescue
+            _ ->
+              raise BinaryFormat.ParseError,
+                message: "Unable to parse VR",
+                group_number: group_number,
+                element_number: element_number
           end
 
         {value_length, rest} =
@@ -437,16 +471,18 @@ defmodule Dicom.BinaryFormat do
                   DataElement.from(
                     group_number,
                     element_number,
-                    :pixel_data,
+                    value_rep,
                     pixel_value_sequence
                   )
 
                 {de, rest}
               else
-                {seq_values, rest} =
-                  from_binary_until(rest, 0xFFFEE0DD, endianness: endianness, explicit: explicit)
+                {elements, rest} =
+                  read_from_binary!(rest, 0xFFFEE0DD, true, opts)
 
-                seq_values = normalize_sequence_elements(seq_values)
+                seq_values =
+                  elements
+                  |> normalize_sequence_elements()
 
                 de =
                   DataElement.from(
@@ -480,71 +516,174 @@ defmodule Dicom.BinaryFormat do
     end
   end
 
-  def from_binary_until(data, until_tag, opts) do
-    case read_next_data_element(data, opts) do
-      {:ok, {de, rest}} ->
-        cond do
-          DataElement.tag(de) < until_tag ->
-            {other_des, rest} = from_binary_until(rest, until_tag, opts)
-            {[de | other_des], rest}
+  @doc """
+  Reads `Dicom.DataElement`s from a binary.
 
-          DataElement.tag(de) == until_tag ->
-            {[de], rest}
+  The reading can be limited to a certain range of data using the
+  `until_tag` and `inclusive` parameters. Data elements are
+  read as long the tags are lesser or equal than `until_tag`. If
+  `inclusive` is `true`, the last element falling in this range
+  is parsed and added to the resulting data set. If `inclusive` is
+  `false`, the last element is skipped.
 
-          true ->
-            {[], data}
-        end
+  Raises an error if the data cannot be parsed.
 
-      {:error, :no_data} ->
-        {[], data}
+  Returns a tuple of `Dicom.DataSet` and binary data
+  from the end which was not consumed during parsing.
+
+  ## Examples
+
+      iex> serialization_options = [endianness: :little, explicit: true]
+      # read all elements in data
+      iex> elements = BinaryFormat.read_from_binary!(data, serialization_options)
+      # read elements until PixelData, skipping the latter
+      iex> elements = BinaryFormat.read_from_binary!(data, 0x7FE00010, false, serialization_options)
+  """
+  @spec read_from_binary!(binary(), integer(), boolean(), serialization_options()) ::
+          {[DataElement.t()], binary()}
+  def read_from_binary!(data, until_tag \\ 0xFFFFFFFF, inclusive \\ false, opts)
+      when is_binary(data) do
+    # check if we continue parsing
+    read_next =
+      if byte_size(data) >= 4 do
+        {{group_number, element_number}, _rest} = read_tag(data, opts)
+        tag = Bitwise.bsl(group_number, 16) + element_number
+        (inclusive and tag <= until_tag) or tag < until_tag
+      else
+        false
+      end
+
+    # recursively read the elements
+    if read_next do
+      case read_next_data_element(data, opts) do
+        {:ok, {current_element, rest}} ->
+          {tail_elements, rest} =
+            if DataElement.tag(current_element) < until_tag do
+              read_from_binary!(rest, until_tag, inclusive, opts)
+            else
+              # E.g. when we parse until the sequence delimination tag 0xFFFEE0DD,
+              # the tag is one of the highest found. Without the break clause,
+              # we would continue parsing after the tag.
+              {[], rest}
+            end
+
+          {[current_element | tail_elements], rest}
+
+        {:error, :no_data} ->
+          {[], data}
+      end
+    else
+      {[], data}
     end
   end
 
-  def from_binary(data, opts)
-      when is_binary(data) do
-    ds =
-      Stream.unfold(data, fn ac ->
-        case read_next_data_element(ac, opts) do
-          {:ok, {de, rest}} -> {de, rest}
-          {:error, :no_data} -> nil
-        end
-      end)
-      |> Dicom.DataSet.from_elements()
+  defp read_from_binary(data, serialization_options) do
+    try do
+      {:ok, read_from_binary!(data, serialization_options)}
+    rescue
+      error -> {:error, error}
+    end
+  end
 
-    ds
+  @doc """
+  Tries to read `Dicom.DataSet` from `data`.
+
+  Endianness and value representation must be defined via `serialization_options`.
+
+  Returns the parsed data set or raises an error if it cannot be
+  parsed successfully.
+
+  This function parses a set of concatenated data elements into
+  a data set. Use `from_file_data/1` to parse full "part 10" file
+  data including header and meta data.
+  """
+  @spec from_binary!(binary(), serialization_options()) :: DataSet.t()
+  def from_binary!(data, serialization_options)
+      when is_binary(data) do
+    {elements, _remaining_data} = read_from_binary!(data, serialization_options)
+    DataSet.from_elements(elements)
   end
 
   # TODO add better error handling to parsing
 
+  defp read_file_header(data) do
+    case data do
+      <<_preamble::binary-size(128), "DICM", data::binary>> ->
+        {:ok, data}
+
+      _ ->
+        {:error, "Data does not have valid DICOM header"}
+    end
+  end
+
+  defp read_file_metadata(data) do
+    file_meta_opts = [endianness: :little, explicit: true]
+
+    with {:ok, {file_meta_length_de, remaining_data}} <-
+           read_next_data_element(data, file_meta_opts),
+         file_meta_length <- DataElement.value(file_meta_length_de),
+         <<file_meta_data::binary-size(file_meta_length), remaining_data::binary>> <-
+           remaining_data,
+         {:ok, {file_meta_elements, <<>>}} <- read_from_binary(file_meta_data, file_meta_opts) do
+      {:ok, {DataSet.from_elements(file_meta_elements), remaining_data}}
+    else
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
+  defp get_transfer_syntax(file_meta_ds) do
+    with {:ok, transfer_syntax_de} <- DataSet.fetch(file_meta_ds, :TransferSyntaxUID),
+         transfer_syntax_uid <- DataElement.value(transfer_syntax_de),
+         {:ok, transfer_syntax} <-
+           Dicom.UidRegistry.get_transfer_syntax_by_uid(transfer_syntax_uid) do
+      {:ok, transfer_syntax}
+    else
+      {:error, reason} -> {:error, reason}
+      :error -> {:error, :unknown}
+    end
+  end
+
+  @doc """
+  Tries to parse full "part 10"-encoded file data into a `Dicom.DataSet`.
+
+  Returns a tuple of shape `{:ok, data_set}` if successful or `{:error, reason}`
+  if not.
+  """
+  @spec from_file_data(binary()) :: {:ok, DataSet.t()} | {:error, any()}
+  def from_file_data(data) do
+    with {:ok, data} <- read_file_header(data),
+         {:ok, {file_meta_ds, remaining_data}} <- read_file_metadata(data),
+         {:ok, transfer_syntax} <- get_transfer_syntax(file_meta_ds),
+         {:ok, serialization_options} <- Map.fetch(transfer_syntax, :options),
+         {:ok, {elements, _remaining_data}} <-
+           read_from_binary(remaining_data, serialization_options) do
+      ds =
+        elements
+        |> DataSet.from_elements()
+        |> DataSet.with_file_meta(file_meta_ds)
+
+      {:ok, ds}
+    end
+  end
+
+  @deprecated "Directly use `File.read!/1` and `BinaryFormat.from_file_data/1` instead"
   @spec from_file!(Path.t()) :: DataSet.t()
   def from_file!(path) do
     {:ok, data} = File.read(path)
-    <<_preamble::binary-size(128), "DICM", data::binary>> = data
-
-    file_meta_opts = [endianness: :little, explicit: true]
-    {:ok, {file_meta_length_de, rest}} = read_next_data_element(data, file_meta_opts)
-    file_meta_length = DataElement.value(file_meta_length_de)
-    <<file_meta_data::binary-size(file_meta_length), rest::binary>> = rest
-    file_meta_ds = from_binary(file_meta_data, file_meta_opts)
-
-    file_ts =
-      file_meta_ds
-      |> Dicom.DataSet.value_for!(:TransferSyntaxUID)
-      |> Dicom.UidRegistry.get_transfer_syntax()
-
-    ts_options = Map.fetch!(file_ts, :options)
-
-    ds = from_binary(rest, ts_options)
+    {:ok, ds} = from_file_data(data)
     ds
   end
 
+  @deprecated "Directly use `File.read/1` and `BinaryFormat.from_file_data/1` instead"
   @spec from_file(Path.t()) :: {:ok, DataSet.t()} | {:error, atom()}
   def from_file(path) do
     try do
       ds = from_file!(path)
       {:ok, ds}
     rescue
-      _ -> {:error, :invalid_file}
+      exc ->
+        IO.inspect(exc, label: "error")
+        {:error, :invalid_file}
     end
   end
 
@@ -570,11 +709,75 @@ defmodule Dicom.BinaryFormat do
       serialize_u16(Bitwise.band(tag, 0xFF), endianness)
   end
 
+  @doc """
+  Serializes `data_set` into a full binary string following [DICOM part 10](https://dicom.nema.org/medical/dicom/current/output/html/part10.html#chapter_7).
+
+  The preamble of the serialized file can be set with the `preamble` parameter,
+  which defaults to zeroes.
+  """
+  @spec to_file_data(DataSet.t(), binary()) :: binary()
+  def to_file_data(data_set, preamble \\ <<0::128*8>>) do
+    file_meta =
+      if(is_nil(data_set.file_meta), do: DataSet.empty(), else: data_set.file_meta)
+      |> DataSet.put_default(:FileMetaInformationVersion, :OB, [<<0, 1>>])
+      |> DataSet.put_default(
+        :MediaStorageSOPClassUID,
+        :UI,
+        [DataSet.value_for!(data_set, :SOPClassUID)]
+      )
+      |> DataSet.put_default(
+        :MediaStorageSOPInstanceUID,
+        :UI,
+        [DataSet.value_for!(data_set, :SOPInstanceUID)]
+      )
+      |> DataSet.put_default(:ImplementationClassUID, :UI, ["1.2.826.0.1.3680043.10.1603.0.0"])
+      |> DataSet.put_default(:ImplementationVersionName, :SH, ["DICOM.ex 0.x"])
+
+    header_serialization_opts = [endianness: :little, explicit: true]
+
+    file_meta_serialized = serialize(file_meta, header_serialization_opts)
+    file_meta_length = DataElement.new(0x00020000, :UL, [byte_size(file_meta_serialized)])
+
+    file_meta_length_serialized =
+      serialize_data_element(file_meta_length, header_serialization_opts)
+
+    # data part
+    ts = file_meta |> DataSet.value_for!(:TransferSyntaxUID) |> UidRegistry.get_transfer_syntax!()
+    data_serialized = serialize(data_set, ts.options)
+
+    data =
+      preamble <> "DICM" <> file_meta_length_serialized <> file_meta_serialized <> data_serialized
+
+    data
+  end
+
   defp serialize_binary(data, padding \\ <<0>>) do
     if Integer.is_odd(byte_size(data)) do
       data <> padding
     else
       data
+    end
+  end
+
+  defp serialize_pixel_data(data, endianness: endianness, explicit: _explicit) do
+    # TODO: probably distinction between native and encapsulated pixel data should be more explicit
+    if length(data) == 1 do
+      serialize_binary(Enum.at(data, 0))
+    else
+      data_element_tag = serialize_u16(0xFFFE, endianness) <> serialize_u16(0xE000, endianness)
+
+      frame_data =
+        data
+        |> Enum.map(fn frame ->
+          data_element_tag <> serialize_u32(byte_size(frame), endianness) <> frame
+        end)
+        |> Enum.into(<<>>)
+
+      seq_delimination =
+        serialize_u16(0xFFFE, endianness) <>
+          serialize_u16(0xE0DD, endianness) <> serialize_u32(0, endianness)
+
+      frame_data <> seq_delimination
     end
   end
 
@@ -606,12 +809,15 @@ defmodule Dicom.BinaryFormat do
   end
 
   @doc """
-  Serialize a data element according to the given `serialization_options`.
+  Serializes `data_element` according to the given `serialization_options`.
+
+  Returns the serialized element as binary string.
   """
   @spec serialize_data_element(DataElement.t(), serialization_options()) :: binary()
   def serialize_data_element(data_element, endianness: endianness, explicit: explicit) do
     group = serialize_u16(data_element.group_number, endianness)
     element = serialize_u16(data_element.element_number, endianness)
+    is_pixel_data = data_element.group_number == 0x7FE0 and data_element.element_number == 0x0010
 
     value =
       case data_element.vr do
@@ -649,7 +855,15 @@ defmodule Dicom.BinaryFormat do
         :SQ ->
           serialize_sequence(data_element.values, endianness: endianness, explicit: explicit)
 
-        vr when vr in [:OB, :OD, :OF, :OL, :OV, :OW, :UI] ->
+        :OB ->
+          if is_pixel_data do
+            serialize_pixel_data(data_element.values, endianness: endianness, explicit: explicit)
+          else
+            data_element.values |> Enum.join() |> serialize_binary()
+          end
+
+        # TODO: list of binary elements should be in one place
+        vr when vr in [:OD, :OF, :OL, :OV, :OW, :UI] ->
           data_element.values |> Enum.join() |> serialize_binary()
 
         vr
@@ -674,47 +888,36 @@ defmodule Dicom.BinaryFormat do
           data_element.values |> Enum.join("\\") |> serialize_binary(" ")
       end
 
+    data_length = if(is_pixel_data, do: 0xFFFFFFFF, else: byte_size(value))
+
     if explicit do
       if is_long_data_element(data_element.vr) do
-        value_length = serialize_u32(byte_size(value), endianness)
+        value_length = serialize_u32(data_length, endianness)
         group <> element <> to_string(data_element.vr) <> <<0, 0>> <> value_length <> value
       else
-        value_length = serialize_u16(byte_size(value), endianness)
+        value_length = serialize_u16(data_length, endianness)
         group <> element <> to_string(data_element.vr) <> value_length <> value
       end
     else
-      value_length = serialize_u32(byte_size(value), endianness)
+      value_length = serialize_u32(data_length, endianness)
       group <> element <> value_length <> value
     end
   end
 
-  def serialize_command_data_set(data_set) do
-    # command data set per standard is little endian, implicit vr
-    # https://dicom.nema.org/dicom/2013/output/chtml/part07/sect_6.3.html
-    serialization_options = [endianness: :little, explicit: false]
+  @doc """
+  Serializes `data_set` according to the given `serialization_options`.
 
+  Returns the serialized data set as binary.
+
+  This function serializes only the data elements. Use `BinaryFormat.to_file_data/2`
+  to generate full "part 10" DICOM file data including header and meta data.
+  """
+  @spec serialize(DataSet.t(), serialization_options()) :: binary()
+  def serialize(data_set, serialization_options) do
     serialized =
-      for {_tag, de} <- data_set do
-        Dicom.BinaryFormat.serialize_data_element(de, serialization_options)
-      end
-      |> Enum.into(<<>>)
-
-    cgroup_length_de = Dicom.DataElement.from(:CommandGroupLength, [byte_size(serialized)])
-
-    serialized =
-      Dicom.BinaryFormat.serialize_data_element(
-        cgroup_length_de,
-        serialization_options
-      ) <> serialized
-
-    serialized
-  end
-
-  def serialize(data_set, [endianness: endianess, explicit: explicit] = serialization_options) do
-    serialized =
-      for {_tag, de} <- data_set do
-        Dicom.BinaryFormat.serialize_data_element(de, serialization_options)
-      end
+      data_set
+      |> Enum.sort(fn {tag1, _el1}, {tag2, _el2} -> tag1 < tag2 end)
+      |> Enum.map(fn {_tag, el} -> serialize_data_element(el, serialization_options) end)
       |> Enum.into(<<>>)
 
     serialized
