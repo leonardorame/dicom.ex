@@ -22,7 +22,7 @@ care of the response to the SCU, based on the data received.
 At the moment of writing this readme, there are these handlers:  
 
 **association_validator**  
-> Allows/Rejects incomming connections.   
+> Allows/Rejects incoming connections.
 
 **cfind**  
 > Receives incoming C-FIND requests and returns a Stream containing matches.  
@@ -94,7 +94,7 @@ defmodule AssociationExample do
     {:ok, endpoint_pid}
   end
 
-  # Whithout this the server won't keep running
+  # Without this the server won't keep running
   defp loop() do
     loop()
   end
@@ -131,7 +131,7 @@ defmodule CFindSCP do
     {:ok, endpoint_pid}
   end
 
-  # Whithout this the server won't keep running
+  # Without this the server won't keep running
   defp loop() do
     loop()
   end
@@ -202,7 +202,7 @@ defmodule SCP do
     {:ok, endpoint_pid}
   end
 
-  # Whithout this the server won't keep running
+  # Without this the server won't keep running
   defp loop() do
     loop()
   end
@@ -253,4 +253,32 @@ defmodule SCP do
   end
 
 end
+```
+
+## Dicom SCU
+
+### C-FIND SCU
+
+This snippet demonstrates how to issue a Study Root C-FIND query to a remote SCP.
+
+```elixir
+identifier =
+  Dicom.DataSet.from_keyword_list(
+    QueryRetrieveLevel: "STUDY",
+    PatientName: "Doe^John"
+  )
+
+{:ok, results} =
+  DicomNet.SCU.cfind(
+    "127.0.0.1",
+    4242,
+    "TEST",
+    "ME",
+    "1.2.840.10008.5.1.4.1.2.2.1",
+    identifier
+  )
+
+Enum.each(results, fn ds ->
+  IO.inspect(ds, label: "C-FIND")
+end)
 ```
