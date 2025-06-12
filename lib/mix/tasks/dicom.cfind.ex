@@ -27,15 +27,17 @@ defmodule Mix.Tasks.Dicom.Cfind.Test do
           identifier =
                   Dicom.DataSet.from_keyword_list(
                             QueryRetrieveLevel: "STUDY",
-                            PatientName: "Doe^John"
+                            PatientName: "D*",
+                            StudyDate: ""
                           )
 
           case DicomNet.SCU.cfind(host, port, called, calling,
                        "1.2.840.10008.5.1.4.1.2.2.1", identifier) do
                   {:ok, results} ->
-                      Enum.each(results, fn ds ->
-                                  IO.inspect(ds, label: "C-FIND")
-                                end)
+                       IO.inspect(results)
+#                      Enum.each(results, fn ds ->
+#                                  IO.inspect(ds, label: "C-FIND")
+#                                end)
 
                     {:error, reason} ->
                       Mix.shell().error("C-FIND failed: #{inspect(reason)}")

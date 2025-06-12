@@ -86,6 +86,28 @@ defmodule DicomNet.Pdu do
           rest
         }
 
+      <<0x21::8, _r::8, length::16, presentation_context_id::8, _r2::8, result::8,
+        _r3::8, sub_items::binary-size(length - 4), rest::binary>> ->
+        result =
+          case result do
+            0 -> :accept
+            1 -> :user_rejection
+            2 -> :no_reason
+            3 -> :abstract_syntax_not_supported
+            4 -> :transfer_syntaxes_not_supported
+            _ -> result
+          end
+
+        {
+          %{
+            :item_type => :presentation_context,
+            :id => presentation_context_id,
+            :result => result,
+            :syntaxes => Stream.unfold(sub_items, &parse_syntax_field/1) |> Enum.to_list()
+          },
+          rest
+        }
+
       <<0x50::8, _r::8, length::16, user_data::binary-size(length), rest::binary>> ->
         {%{
            :item_type => :user_information,
