@@ -1,4 +1,5 @@
 defmodule Dicom.Image.JPEGLossless do
+  use Bitwise
   @moduledoc """
   Minimal decoder for JPEG Lossless baseline (process 14).
 
