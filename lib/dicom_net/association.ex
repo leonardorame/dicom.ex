@@ -116,6 +116,28 @@ defmodule DicomNet.Association do
     {new_state, response}
   end
 
+  defp serialize_command_data_set(data_set) do
+    # command data set per standard is little endian, implicit vr
+    # https://dicom.nema.org/dicom/2013/output/chtml/part07/sect_6.3.html
+    serialization_options = [endianness: :little, explicit: false]
+
+    serialized =
+      for {_tag, de} <- data_set do
+        Dicom.BinaryFormat.serialize_data_element(de, serialization_options)
+      end
+      |> Enum.into(<<>>)
+
+    cgroup_length_de = Dicom.DataElement.from(:CommandGroupLength, [byte_size(serialized)])
+
+    serialized =
+      Dicom.BinaryFormat.serialize_data_element(
+        cgroup_length_de,
+        serialization_options
+      ) <> serialized
+
+    serialized
+  end
+
   defp handle_pdu(
          %Pdu{
            type: :associate_request,
@@ -123,7 +145,6 @@ defmodule DicomNet.Association do
          },
          %{socket: _socket, state: :waiting_for_association} = state
        ) do
-
     # If the :association handler is defined 
     # the acceptance/rejection can be handled by
     # the host application.
@@ -170,13 +191,14 @@ defmodule DicomNet.Association do
        ) do
     Logger.debug("Received command")
 
-    command_ds = Dicom.BinaryFormat.from_binary(data, endianness: :little, explicit: false)
+    command_ds = Dicom.BinaryFormat.from_binary!(data, endianness: :little, explicit: false)
     command_field = DataSet.value_for!(command_ds, :CommandField)
-    mid_de = mid_de = DataSet.value_for!(command_ds, :MessageID)
+    mid_de = DataSet.value_for!(command_ds, :MessageID)
 
     case command_field do
       0x30 ->
         Logger.debug("Command is C-ECHO")
+
         response_ds =
           Dicom.DataSet.from_keyword_list(
             AffectedSOPClassUID: @verification_sopclassuid,
@@ -187,13 +209,13 @@ defmodule DicomNet.Association do
           )
 
         response =
-          Dicom.BinaryFormat.serialize_command_data_set(response_ds)
+          serialize_command_data_set(response_ds)
           |> Pdu.new_data_pdu(presentation_context_id, type: :command_last_fragment)
           |> Pdu.serialize()
 
         {state, response}
 
-      _ -> 
+      _ ->
         new_state =
           state
           |> Map.put(:state, :receiving_data)
@@ -230,7 +252,7 @@ defmodule DicomNet.Association do
          %{
            state: :receiving_data,
            received_data: received_data,
-           association: %{presentation_contexts: presentation_contexts},
+           association: %{presentation_contexts: presentation_contexts} = association,
            command: command,
            socket: socket
          } = state
@@ -241,9 +263,16 @@ defmodule DicomNet.Association do
 
     %{syntaxes: syntaxes} = Map.get(presentation_contexts, presentation_context_id)
     %{uid: ts_uid} = syntaxes |> Enum.find(fn el -> Map.get(el, :syntax_type) == :transfer end)
-    %{name: _ts_name, options: ts_options} = Dicom.UidRegistry.get_transfer_syntax(ts_uid)
+    %{name: _ts_name, options: ts_options} = Dicom.UidRegistry.get_transfer_syntax!(ts_uid)
 
-    ds = Dicom.BinaryFormat.from_binary(data, ts_options)
+    ds =
+      Dicom.BinaryFormat.from_binary!(data, ts_options)
+      |> DataSet.with_file_meta_from_keywords(
+        TransferSyntaxUID: ts_uid,
+        SendingApplicationEntityTitle: Map.get(association, :calling_ae_title),
+        ReceivingApplicationEntityTitle: Map.get(association, :called_ae_title)
+      )
+
     command_code = DataSet.value_for!(command, :CommandField)
 
     response =
@@ -260,14 +289,14 @@ defmodule DicomNet.Association do
               # TODO: replace cfind_response_tail with a proper C-Store response.
               response_ds = cfind_response_tail(asci_de, mid_de, @unable_to_process)
 
-              Dicom.BinaryFormat.serialize_command_data_set(response_ds)
+              serialize_command_data_set(response_ds)
               |> Pdu.new_data_pdu(presentation_context_id, type: :command_last_fragment)
               |> Pdu.serialize()
 
             {:ok, cstore_handler} ->
               response_ds = handle_cstore(command, cstore_handler, ds)
 
-              Dicom.BinaryFormat.serialize_command_data_set(response_ds)
+              serialize_command_data_set(response_ds)
               |> Pdu.new_data_pdu(presentation_context_id, type: :command_last_fragment)
               |> Pdu.serialize()
           end
@@ -283,7 +312,7 @@ defmodule DicomNet.Association do
               mid_de = DataSet.fetch!(command, :MessageID)
               response_ds = cfind_response_tail(asci_de, mid_de, @unable_to_process)
 
-              Dicom.BinaryFormat.serialize_command_data_set(response_ds)
+              serialize_command_data_set(response_ds)
               |> Pdu.new_data_pdu(presentation_context_id, type: :command_last_fragment)
               |> Pdu.serialize()
 
@@ -301,7 +330,7 @@ defmodule DicomNet.Association do
                   cfind_handler
                 )
 
-              Dicom.BinaryFormat.serialize_command_data_set(response_ds)
+              serialize_command_data_set(response_ds)
               |> Pdu.new_data_pdu(presentation_context_id, type: :command_last_fragment)
               |> Pdu.serialize()
           end
@@ -362,7 +391,7 @@ defmodule DicomNet.Association do
         Status: status
       )
 
-    Dicom.BinaryFormat.serialize_command_data_set(response)
+    serialize_command_data_set(response)
     |> Pdu.new_data_pdu(presentation_context_id, type: :command_last_fragment)
     |> Pdu.serialize()
   end

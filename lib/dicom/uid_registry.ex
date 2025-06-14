@@ -62,11 +62,23 @@ defmodule Dicom.UidRegistry do
     }
   }
 
-  def get_transfer_syntax(uid) do
+  @transfer_syntax_uids_by_name @transfer_syntaxes
+                                |> Enum.map(fn {uid, obj} -> {obj.name, uid} end)
+                                |> Enum.into(%{})
+
+  def get_transfer_syntax!(uid) do
     Map.fetch!(@transfer_syntaxes, uid)
   end
 
+  def get_transfer_syntax_by_uid(uid) do
+    Map.fetch(@transfer_syntaxes, uid)
+  end
+
   def get_default_transfer_syntax() do
-    get_transfer_syntax("1.2.840.10008.1.2")
+    get_transfer_syntax!("1.2.840.10008.1.2")
+  end
+
+  def get_transfer_syntax_uid_by_name!(name) do
+    Map.fetch!(@transfer_syntax_uids_by_name, name)
   end
 end
