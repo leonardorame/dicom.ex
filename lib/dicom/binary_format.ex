@@ -22,6 +22,7 @@ defmodule Dicom.BinaryFormat do
   alias Dicom.UidRegistry
   alias Dicom.DataSet
   alias Dicom.DataElement
+  alias Dicom.Image.JPEGLossless
 
   @typedoc """
   Options for the de(serialization) of DICOM binaries.
@@ -902,6 +903,16 @@ defmodule Dicom.BinaryFormat do
       value_length = serialize_u32(data_length, endianness)
       group <> element <> value_length <> value
     end
+  end
+
+  @doc """
+  Decode a JPEG Lossless (process 14) frame.
+
+  The function delegates the actual decoding to `Dicom.Image.JPEGLossless`.
+  """
+  @spec decode_jpeg_lossless(binary()) :: binary()
+  def decode_jpeg_lossless(frame) do
+    JPEGLossless.decode(frame)
   end
 
   @doc """

@@ -14,6 +14,13 @@ in production and absolutely not in clinical contexts.
 * Supports VRs and tag dictionary as of DICOM version 2024d
 * Handle C-ECHO, C-FIND and C-STORE network requests ([DICOM Part 3.7](https://dicom.nema.org/medical/dicom/current/output/chtml/part07/PS3.7.html))
 
+## JPEG Lossless Support
+
+This release includes a decoder for JPEG Lossless baseline process 14. The implementation
+supports single component images with 8‑, 12‑ or 16‑bit sample precision and the
+first order predictor. Restart markers and multi-scan images are currently not
+handled.
+
 ## Tools and Examples
 
 ### Loading and Displaying DICOM Files
