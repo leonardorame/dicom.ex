@@ -14,10 +14,14 @@ defmodule Dicom.DataSet do
   def from_keyword_list(value_list) do
     value_list
     |> Enum.map(fn {keyword, value} ->
-      Dicom.DataElement.from(keyword, if(is_list(value), do: value, else: [value]))
+      Dicom.DataElement.from(keyword, normalize_values(value))
     end)
     |> from_elements()
   end
+
+  defp normalize_values(nil), do: []
+  defp normalize_values(value) when is_list(value), do: value
+  defp normalize_values(value), do: [value]
 
   @spec fetch(t(), atom()) :: {:ok, DataElement.t()} | {:error, atom()}
   def fetch(ds, keyword) when is_atom(keyword) do
