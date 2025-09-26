@@ -84,7 +84,11 @@ defmodule Mix.Tasks.Dicom.Cfind.Image do
       )
 
     case DicomNet.SCU.cfind(host, port, called, calling, @study_root_cfind, identifier) do
-      {:ok, datasets} -> Enum.map(datasets, &image_map/1)
+      {:ok, datasets} ->
+        datasets
+        |> Enum.map(&{dataset_value(&1, :SOPInstanceUID), image_map(&1)})
+        |> Enum.reject(fn {uid, _} -> uid in [nil, ""] end)
+        |> Enum.into(%{})
       {:error, reason} -> raise "C-FIND image failed: #{inspect(reason)}"
     end
   end
