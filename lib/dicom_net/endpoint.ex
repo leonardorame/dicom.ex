@@ -8,7 +8,7 @@ defmodule DicomNet.Endpoint do
   are forwarded to registered listeners as messages.
 
   See also:
-    * https://dicom.nema.org/dicom/2013/output/chtml/part08/chapter_9.htm
+    * https://dicom.nema.org/dicom/2013/output/chtml/part08/chapter_9.htmIO.inspect(command_ds)
   """
   use GenServer
   require Logger
