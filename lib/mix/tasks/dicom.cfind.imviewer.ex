@@ -109,16 +109,16 @@ defmodule Mix.Tasks.Dicom.Cfind.Imviewer do
       end)
 
     %{
-      study_instance_uid: dataset_value(study_ds, :StudyInstanceUID),
-      accession_number: dataset_value(study_ds, :AccessionNumber),
-      study_description: dataset_value(study_ds, :StudyDescription),
-      modality: dataset_value(study_ds, :ModalitiesInStudy) || dataset_value(study_ds, :Modality),
-      study_date: dataset_value(study_ds, :StudyDate),
-      study_time: dataset_value(study_ds, :StudyTime),
-      patient_name: dataset_value(study_ds, :PatientName),
-      patient_id: dataset_value(study_ds, :PatientID),
-      image_count: series_image_count,
-      series: series
+      "study_instance_uid" => dataset_value(study_ds, :StudyInstanceUID),
+      "accession_number" => dataset_value(study_ds, :AccessionNumber),
+      "study_description" => dataset_value(study_ds, :StudyDescription),
+      "modality" => dataset_value(study_ds, :ModalitiesInStudy) || dataset_value(study_ds, :Modality),
+      "study_date" => dataset_value(study_ds, :StudyDate),
+      "study_time" => dataset_value(study_ds, :StudyTime),
+      "patient_name" => dataset_value(study_ds, :PatientName),
+      "patient_id" => dataset_value(study_ds, :PatientID),
+      "image_count" => series_image_count,
+      "series" => Enum.map(series, &stringify_series_map/1)
     }
   end
 
@@ -132,6 +132,17 @@ defmodule Mix.Tasks.Dicom.Cfind.Imviewer do
       image_count:
         dataset_value(series_ds, :NumberOfSeriesRelatedInstances)
         |> maybe_integer()
+    }
+  end
+
+  defp stringify_series_map(series) do
+    %{
+      "series_instance_uid" => series.series_instance_uid,
+      "study_instance_uid" => series.study_instance_uid,
+      "series_number" => series.series_number,
+      "modality" => series.modality,
+      "description" => series.description,
+      "image_count" => series.image_count
     }
   end
 
